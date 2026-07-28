@@ -141,9 +141,13 @@ textarea { width: 100%; min-height: 84px; padding: 12px; resize: vertical; color
 .cart-heading button { padding: 8px; color: var(--muted); background: none; border: 0; cursor: pointer; }
 .cart-items { border-top: 1px solid var(--line); }
 .cart-item { display: flex; justify-content: space-between; align-items: center; gap: 15px; padding: 14px 0; border-bottom: 1px solid var(--line); }
-.cart-item > div:first-child { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.cart-item-main { display: flex; min-width: 0; flex: 1; align-items: center; justify-content: space-between; gap: 10px; padding: 6px 4px; color: inherit; text-align: left; background: transparent; border: 0; border-radius: 10px; cursor: pointer; }
+.cart-item-main:hover { background: var(--paper); }
+.cart-item-main:focus-visible { outline: 3px solid color-mix(in srgb, var(--red) 35%, transparent); outline-offset: 2px; }
+.cart-item-main > span { display: flex; min-width: 0; flex-direction: column; gap: 3px; }
+.cart-item-main i { color: var(--muted); font-size: 22px; font-style: normal; }
 .cart-item b { font-size: 14px; }
-.cart-item > div > span { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.cart-item-main small { overflow: hidden; color: var(--muted); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .cart-item strong { color: var(--red); font-size: 13px; }
 .stepper { display: grid; flex: 0 0 auto; grid-template-columns: 32px 28px 32px; align-items: center; text-align: center; }
 .stepper button { width: 32px; height: 32px; padding: 0; background: var(--paper); border: 1px solid var(--line); border-radius: 50%; cursor: pointer; }
