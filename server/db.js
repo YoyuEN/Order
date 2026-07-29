@@ -232,13 +232,13 @@ export async function createOrder(order) {
     const [result] = await connection.execute(
       `INSERT INTO orders (order_number, table_number, guest_count, status)
        VALUES (?, ?, ?, 'confirmed')`,
-      [order.orderNumber, order.table, order.guests],
+      [order.orderNumber, '', 1],
     )
     for (const item of order.items) {
       await connection.execute(
         `INSERT INTO order_items (order_id, dish_id, dish_name, option_name, note, quantity)
          VALUES (?, (SELECT id FROM dishes WHERE id = ?), ?, ?, ?, ?)`,
-        [result.insertId, item.dishId, item.name, item.option, item.note, item.quantity],
+        [result.insertId, item.dishId, item.name, item.option, item.note, 1],
       )
     }
     await connection.commit()

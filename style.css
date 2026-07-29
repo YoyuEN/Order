@@ -119,33 +119,6 @@ svg {
   border-radius: 50%;
 }
 
-.table-pill {
-  min-width: 92px;
-  min-height: 54px;
-  padding: 7px 12px;
-  border: 1px solid #ead7ca;
-  border-radius: 14px;
-  background: #fff5ec;
-  text-align: left;
-  cursor: pointer;
-}
-
-.table-pill strong,
-.table-pill span {
-  display: block;
-}
-
-.table-pill strong {
-  color: var(--red-dark);
-  font-size: 15px;
-}
-
-.table-pill span {
-  margin-top: 2px;
-  color: var(--muted);
-  font-size: 10px;
-}
-
 .menu-panel {
   min-width: 0;
   padding: 16px 14px 112px;
@@ -423,6 +396,16 @@ svg {
   border-radius: 50%;
   font-size: 9px;
   font-weight: 800;
+}
+
+.add-button.selected {
+  color: white;
+  background: var(--green);
+  font-size: 17px;
+}
+
+.add-button:disabled {
+  cursor: default;
 }
 
 .sold-out {
@@ -853,35 +836,6 @@ textarea {
   margin-top: 24px;
 }
 
-.order-info {
-  padding: 14px;
-}
-
-.order-info button {
-  display: flex;
-  width: 100%;
-  justify-content: space-between;
-  padding: 16px;
-  background: var(--cream);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  text-align: left;
-  cursor: pointer;
-}
-
-.order-info span {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.order-info span:last-child {
-  text-align: right;
-}
-
-.order-info small {
-  color: var(--muted);
-}
 
 .cart-page {
   margin: 0 14px;
@@ -969,26 +923,16 @@ textarea {
   white-space: nowrap;
 }
 
-.cart-item strong {
-  color: var(--red);
-  font-size: 13px;
-}
-
-.stepper {
-  display: grid;
+.remove-item {
   flex: 0 0 auto;
-  grid-template-columns: 32px 28px 32px;
-  align-items: center;
-  text-align: center;
-}
-
-.stepper button {
-  width: 32px;
-  height: 32px;
-  padding: 0;
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: 50%;
+  min-height: 36px;
+  padding: 7px 10px;
+  color: var(--red-dark);
+  background: #fff3f0;
+  border: 1px solid #e9b9b1;
+  border-radius: 9px;
+  font-size: 11px;
+  font-weight: 700;
   cursor: pointer;
 }
 

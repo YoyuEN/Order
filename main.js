@@ -7,12 +7,12 @@ let dishes = [...defaultDishes, ...(Array.isArray(saved.customDishes) ? saved.cu
   ...dish,
   options: (dish.options || ['标准份']).map((option) => option.replace(/\s*\+¥\d+(?:\.\d+)?$/, '')),
 }))
-const savedPicks = (saved.picks || saved.cart || []).map(({ price: _price, ...item }) => ({
-  ...item,
-  option: (item.option || '标准份').replace(/\s*\+¥\d+(?:\.\d+)?$/, ''),
-}))
+const savedPicks = [...new Map((saved.picks || saved.cart || []).map(({ price: _price, quantity: _quantity, ...item }) => [
+  Number(item.dishId),
+  { ...item, key: String(item.dishId), option: (item.option || '标准份').replace(/\s*\+¥\d+(?:\.\d+)?$/, '') },
+])).values()]
 const state = {
-  category: '全部', search: '', picks: savedPicks, table: saved.table || 'A08', guests: saved.guests || 2,
+  category: '全部', search: '', picks: savedPicks,
   selectedDish: null, editingDish: null, selectedOption: '', note: '', view: 'menu', orderNumber: '', confirmed: saved.confirmed || false, confirmedCount: 0,
 }
 
@@ -86,10 +86,10 @@ const icons = {
 }
 
 function persist() {
-  localStorage.setItem('hewei-order-state', JSON.stringify({ picks: state.picks, table: state.table, guests: state.guests, confirmed: state.confirmed, customDishes: dishes.filter((dish) => dish.custom) }))
+  localStorage.setItem('hewei-order-state', JSON.stringify({ picks: state.picks, confirmed: state.confirmed, customDishes: dishes.filter((dish) => dish.custom) }))
 }
 
-function pickCount() { return state.picks.reduce((sum, item) => sum + item.quantity, 0) }
+function pickCount() { return state.picks.length }
 function escapeHtml(value) { const div = document.createElement('div'); div.textContent = value; return div.innerHTML }
 function escapeAttr(value) { return escapeHtml(String(value)).replaceAll('"', '&quot;').replaceAll("'", '&#39;') }
 
@@ -103,7 +103,6 @@ function menuView() {
   return `
     <header class="app-header">
       <div><p class="eyebrow">欢迎光临</p><h1>禾味小馆</h1><p class="status"><span></span> 营业中 · 约 20 分钟出餐</p></div>
-      <button class="table-pill" data-action="table" aria-label="修改桌号和人数"><strong>${escapeHtml(state.table)}桌</strong><span>${state.guests}人用餐 ›</span></button>
     </header>
     <main class="menu-layout">
       <section class="menu-panel" aria-labelledby="menu-heading">
@@ -118,35 +117,35 @@ function menuView() {
 }
 
 function dishCard(dish) {
-  const itemCount = state.picks.filter((item) => item.dishId === dish.id).reduce((sum, item) => sum + item.quantity, 0)
+  const selected = state.picks.some((item) => item.dishId === dish.id)
   return `<article class="dish-card ${dish.soldOut ? 'sold-out' : ''}">
-    <button class="dish-open" data-dish="${dish.id}" ${dish.soldOut ? 'disabled' : ''} aria-label="查看${escapeAttr(dish.name)}详情">${imageMarkup(dish)}<span class="dish-info">${dish.badge ? `<small>${escapeHtml(dish.badge)}</small>` : ''}<b>${escapeHtml(dish.name)}</b><span>${escapeHtml(dish.desc)}</span><span class="sales">月售 ${dish.sales}${dish.spicy ? ` · ${'🌶'.repeat(dish.spicy)}` : ''}</span></span></button>
-    <div class="dish-footer"><span>${dish.soldOut ? '暂时售罄' : itemCount ? `已点 ${itemCount} 份` : '想吃就点它'}</span>${dish.soldOut ? '' : `<button class="add-button" data-dish="${dish.id}" aria-label="点选${escapeAttr(dish.name)}">${itemCount ? `<span>${itemCount}</span>` : ''}+</button>`}</div>
+    <button class="dish-open" data-dish="${dish.id}" ${dish.soldOut ? 'disabled' : ''} aria-label="查看${escapeAttr(dish.name)}详情">${imageMarkup(dish)}<span class="dish-info">${dish.badge ? `<small>${escapeHtml(dish.badge)}</small>` : ''}<b>${escapeHtml(dish.name)}</b><span>${escapeHtml(dish.desc)}</span>${dish.spicy ? `<span class="sales">${'🌶'.repeat(dish.spicy)}</span>` : ''}</span></button>
+    <div class="dish-footer"><span>${dish.soldOut ? '暂时售罄' : selected ? '已点' : '想吃就点它'}</span>${dish.soldOut ? '' : `<button class="add-button ${selected ? 'selected' : ''}" data-dish="${dish.id}" aria-label="${selected ? '已点' : '点选'}${escapeAttr(dish.name)}" ${selected ? 'disabled' : ''}>${selected ? '✓' : '+'}</button>`}</div>
   </article>`
 }
 
 function bottomBar() {
   const count = pickCount()
-  return `<nav class="bottom-nav" aria-label="主导航"><button class="nav-item active" data-action="menu">${icons.home}<span>点菜</span></button><button class="cart-summary" data-action="picks" aria-label="查看已点菜单，共${count}份"><span class="cart-icon">${icons.list}${count ? `<b>${count}</b>` : ''}</span><span><strong>${count ? `已经点了 ${count} 份` : '还没有点菜'}</strong><small>${count ? '看看有没有漏掉想吃的' : '喜欢什么就点什么吧'}</small></span></button><button class="nav-item" data-action="orders">${icons.receipt}<span>已点</span></button></nav>`
+  return `<nav class="bottom-nav" aria-label="主导航"><button class="nav-item active" data-action="menu">${icons.home}<span>点菜</span></button><button class="cart-summary" data-action="picks" aria-label="查看已点菜单，共${count}道菜"><span class="cart-icon">${icons.list}${count ? `<b>${count}</b>` : ''}</span><span><strong>${count ? `已经点了 ${count} 道菜` : '还没有点菜'}</strong><small>${count ? '看看有没有漏掉想吃的' : '喜欢什么就点什么吧'}</small></span></button><button class="nav-item" data-action="orders">${icons.receipt}<span>已点</span></button></nav>`
 }
 
 function detailView() {
   const dish = state.selectedDish
-  return `<main class="detail-view"><button class="icon-button floating-back" data-action="close" aria-label="返回菜单">${icons.back}</button>${imageMarkup(dish, true)}<section class="detail-sheet"><p class="eyebrow">${escapeHtml(dish.category)}</p><h1>${escapeHtml(dish.name)}</h1><p class="detail-desc">${escapeHtml(dish.desc)}</p><div class="detail-meta"><strong>今天就吃这个</strong><span>人气 ${dish.sales}</span></div><div class="management-actions" aria-label="菜品管理"><button class="secondary-button" data-action="edit-dish">编辑菜品</button><button class="danger-button" data-action="delete-dish">删除菜品</button></div><fieldset><legend>选择规格 <em>必选</em></legend><div class="option-list">${dish.options.map((option, index) => `<label><input type="radio" name="option" value="${escapeAttr(option)}" ${state.selectedOption === option || (!state.selectedOption && index === 0) ? 'checked' : ''}><span>${escapeHtml(option)}</span></label>`).join('')}</div></fieldset><label class="note-label" for="dish-note">口味备注 <span>选填</span></label><textarea id="dish-note" maxlength="50" placeholder="例如：不要香菜、少盐">${escapeHtml(state.note)}</textarea><button class="primary-button" data-action="confirm-add">就点这道菜</button></section></main>`
+  return `<main class="detail-view"><button class="icon-button floating-back" data-action="close" aria-label="返回菜单">${icons.back}</button>${imageMarkup(dish, true)}<section class="detail-sheet"><p class="eyebrow">${escapeHtml(dish.category)}</p><h1>${escapeHtml(dish.name)}</h1><p class="detail-desc">${escapeHtml(dish.desc)}</p><div class="detail-meta"><strong>今天就吃这个</strong></div><div class="management-actions" aria-label="菜品管理"><button class="secondary-button" data-action="edit-dish">编辑菜品</button><button class="danger-button" data-action="delete-dish">删除菜品</button></div><fieldset><legend>选择规格 <em>必选</em></legend><div class="option-list">${dish.options.map((option, index) => `<label><input type="radio" name="option" value="${escapeAttr(option)}" ${state.selectedOption === option || (!state.selectedOption && index === 0) ? 'checked' : ''}><span>${escapeHtml(option)}</span></label>`).join('')}</div></fieldset><label class="note-label" for="dish-note">口味备注 <span>选填</span></label><textarea id="dish-note" maxlength="50" placeholder="例如：不要香菜、少盐">${escapeHtml(state.note)}</textarea><button class="primary-button" data-action="confirm-add">${state.picks.some((item) => item.dishId === dish.id) ? '更新选择' : '就点这道菜'}</button></section></main>`
 }
 
 function pickedContent(desktop = false) {
   if (!state.picks.length) return `<div class="cart-heading"><div><p class="eyebrow">今天想吃</p><h2>已点菜单</h2></div></div><div class="empty cart-empty"><span class="empty-icon">${icons.list}</span><b>还没有点菜</b><span>从菜单里挑几道她喜欢的吧</span></div>`
-  return `<div class="cart-heading"><div><p class="eyebrow">今天想吃</p><h2>已点菜单</h2></div><button data-action="clear">清空</button></div><div class="cart-items">${state.picks.map((item, index) => `<div class="cart-item"><button class="cart-item-main" data-dish="${item.dishId}" aria-label="查看${escapeAttr(item.name)}详情"><span><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.option)}${item.note ? ` · ${escapeHtml(item.note)}` : ''}</small><strong>${item.quantity} 份</strong></span><i aria-hidden="true">›</i></button><div class="stepper"><button data-index="${index}" data-delta="-1" aria-label="减少${escapeAttr(item.name)}">−</button><span>${item.quantity}</span><button data-index="${index}" data-delta="1" aria-label="增加${escapeAttr(item.name)}">+</button></div></div>`).join('')}</div>${desktop ? '<button class="primary-button" data-action="confirm-menu">确认点菜</button>' : ''}`
+  return `<div class="cart-heading"><div><p class="eyebrow">今天想吃</p><h2>已点菜单</h2></div><button data-action="clear">清空</button></div><div class="cart-items">${state.picks.map((item, index) => `<div class="cart-item"><button class="cart-item-main" data-dish="${item.dishId}" aria-label="查看${escapeAttr(item.name)}详情"><span><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.option)}${item.note ? ` · ${escapeHtml(item.note)}` : ''}</small></span><i aria-hidden="true">›</i></button><button class="remove-item" data-action="remove-pick" data-index="${index}" aria-label="移除${escapeAttr(item.name)}">移除</button></div>`).join('')}</div>${desktop ? '<button class="primary-button" data-action="confirm-menu">确认点菜</button>' : ''}`
 }
 
 function pickedView() {
-  return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回菜单">${icons.back}</button><h1>确认菜单</h1><span></span></header><section class="order-info"><button data-action="table"><span><small>桌号</small><b>${escapeHtml(state.table)}桌</b></span><span><small>一起吃饭</small><b>${state.guests}人 ›</b></span></button></section><section class="cart-page">${pickedContent()}</section>${state.picks.length ? `<footer class="checkout-bar"><span>共选 <strong>${pickCount()} 份</strong></span><button class="primary-button" data-action="confirm-menu">确认点菜</button></footer>` : ''}</main>`
+  return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回菜单">${icons.back}</button><h1>确认菜单</h1><span></span></header><section class="cart-page">${pickedContent()}</section>${state.picks.length ? `<footer class="checkout-bar"><span>共选 <strong>${pickCount()} 道菜</strong></span><button class="primary-button" data-action="confirm-menu">确认点菜</button></footer>` : ''}</main>`
 }
 
 function ordersView() {
   if (!state.picks.length) return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回菜单">${icons.back}</button><h1>今天吃什么</h1><span></span></header><div class="empty full-empty"><span class="empty-icon">${icons.receipt}</span><b>还没有点菜</b><span>选好想吃的菜后，这里会记录结果</span><button class="secondary-button" data-action="menu">去点菜</button></div></main>`
-  return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回菜单">${icons.back}</button><h1>今天吃什么</h1><span></span></header><section class="cart-page history-menu"><div class="menu-status"><span class="success-mark success-mark--small">✓</span><div><b>${state.confirmed ? '菜单已经选好啦' : '还差最后确认'}</b><span>一共 ${pickCount()} 份，都是今天想吃的</span></div></div>${pickedContent()}</section><div class="history-actions"><button class="secondary-button" data-action="menu">继续点菜</button></div></main>`
+  return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回菜单">${icons.back}</button><h1>今天吃什么</h1><span></span></header><section class="cart-page history-menu"><div class="menu-status"><span class="success-mark success-mark--small">✓</span><div><b>${state.confirmed ? '菜单已经选好啦' : '还差最后确认'}</b><span>一共 ${pickCount()} 道菜，都是今天想吃的</span></div></div>${pickedContent()}</section><div class="history-actions"><button class="secondary-button" data-action="menu">继续点菜</button></div></main>`
 }
 
 function dishFormView() {
@@ -167,7 +166,7 @@ function dishFormView() {
 }
 
 function successView() {
-  return `<main class="success-view"><div class="success-mark">✓</div><p class="eyebrow">今天的菜单定好啦</p><h1>点菜完成</h1><p>都是想吃的，准备一起好好吃饭吧</p><div class="order-ticket"><span>已选菜品 <b>${state.confirmedCount} 份</b></span><span>桌号 <b>${escapeHtml(state.table)}桌</b></span><span>一起吃饭 <b>${state.guests} 人</b></span></div><button class="primary-button" data-action="orders">查看今天的菜单</button><button class="secondary-button" data-action="menu">继续加菜</button></main>`
+  return `<main class="success-view"><div class="success-mark">✓</div><p class="eyebrow">今天的菜单定好啦</p><h1>点菜完成</h1><p>都是想吃的，准备一起好好吃饭吧</p><div class="order-ticket"><span>已选菜品 <b>${state.confirmedCount} 道</b></span></div><button class="primary-button" data-action="orders">查看今天的菜单</button><button class="secondary-button" data-action="menu">继续加菜</button></main>`
 }
 
 function render() {
@@ -182,22 +181,15 @@ function showToast(message) {
 }
 
 function openDish(id) {
-  state.selectedDish = dishes.find((dish) => dish.id === Number(id)); state.selectedOption = state.selectedDish.options[0]; state.note = ''; state.view = 'detail'; render()
+  state.selectedDish = dishes.find((dish) => dish.id === Number(id)); const existing = state.picks.find((item) => item.dishId === state.selectedDish.id); state.selectedOption = existing?.option || state.selectedDish.options[0]; state.note = existing?.note || ''; state.view = 'detail'; render()
 }
 
 function addDish(dish, option = dish.options[0], note = '') {
-  const key = `${dish.id}-${option}-${note}`; const existing = state.picks.find((item) => item.key === key)
-  if (existing) existing.quantity += 1
-  else state.picks.push({ key, dishId: dish.id, name: dish.name, option, note, quantity: 1 })
+  const item = { key: String(dish.id), dishId: dish.id, name: dish.name, option, note }
+  const index = state.picks.findIndex((pick) => pick.dishId === dish.id)
+  if (index >= 0) state.picks[index] = item
+  else state.picks.push(item)
   persist()
-}
-
-function editTable() {
-  const table = window.prompt('请输入桌号', state.table)
-  if (table === null) return
-  const guests = window.prompt('请输入用餐人数（1-20）', state.guests)
-  if (guests === null) return
-  state.table = table.trim().slice(0, 8) || state.table; state.guests = Math.max(1, Math.min(20, Number.parseInt(guests, 10) || state.guests)); persist(); render()
 }
 
 document.addEventListener('click', async (event) => {
@@ -231,15 +223,12 @@ document.addEventListener('click', async (event) => {
     if (button.classList.contains('add-button')) { addDish(dish); showToast(`已添加「${dish.name}」`); render() } else openDish(button.dataset.dish)
     return
   }
-  if (button.dataset.delta) {
-    const index = Number(button.dataset.index); state.picks[index].quantity += Number(button.dataset.delta); if (state.picks[index].quantity <= 0) state.picks.splice(index, 1); persist(); render(); return
-  }
+  if (action === 'remove-pick') { state.picks.splice(Number(button.dataset.index), 1); persist(); render(); return }
   if (action === 'close' || action === 'menu') { state.view = 'menu'; render() }
   if (action === 'close-form') { state.view = state.editingDish ? 'detail' : 'menu'; state.editingDish = null; render() }
   if (action === 'picks') { state.view = 'picks'; render() }
   if (action === 'orders') { state.view = 'orders'; render() }
   if (action === 'new-dish') { state.editingDish = null; state.view = 'dishForm'; render() }
-  if (action === 'table') editTable()
   if (action === 'clear' && window.confirm('确定清空全部已点菜品吗？')) { state.picks = []; persist(); render() }
   if (action === 'confirm-add') { const option = document.querySelector('input[name="option"]:checked')?.value || state.selectedDish.options[0]; const note = document.querySelector('#dish-note').value.trim(); addDish(state.selectedDish, option, note); state.view = 'menu'; render(); showToast('已经点好这道菜啦') }
   if (action === 'confirm-menu') {
@@ -248,7 +237,7 @@ document.addEventListener('click', async (event) => {
     state.confirmed = true
     state.orderNumber = `ORD${Date.now()}`
     persist()
-    const order = { orderNumber: state.orderNumber, table: state.table, guests: state.guests, items: state.picks }
+    const order = { orderNumber: state.orderNumber, items: state.picks }
     try {
       await apiRequest('/api/orders', {
         method: 'POST',
@@ -306,14 +295,7 @@ document.addEventListener('submit', async (event) => {
     }
     dishes = dishes.map((item) => item.id === dish.id ? dish : item)
     state.picks = state.picks.map((item) => item.dishId === dish.id ? { ...item, name: dish.name, option: dish.options.includes(item.option) ? item.option : dish.options[0] } : item)
-    const mergedPicks = new Map()
-    for (const item of state.picks) {
-      const key = `${item.dishId}-${item.option}-${item.note}`
-      const existing = mergedPicks.get(key)
-      if (existing) existing.quantity += item.quantity
-      else mergedPicks.set(key, { ...item, key })
-    }
-    state.picks = [...mergedPicks.values()]
+    state.picks = [...new Map(state.picks.map((item) => [item.dishId, { ...item, key: String(item.dishId) }])).values()]
     state.selectedDish = dish
   } else {
     try {

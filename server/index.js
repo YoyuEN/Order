@@ -34,16 +34,13 @@ const idSchema = z.coerce.number().int().positive()
 
 const orderSchema = z.object({
   orderNumber: z.string().trim().min(6).max(32),
-  table: z.string().trim().min(1).max(20),
-  guests: z.number().int().min(1).max(20),
   items: z.array(z.object({
     dishId: z.number().int().positive(),
     name: z.string().trim().min(1).max(100),
     option: z.string().trim().min(1).max(100),
     note: z.string().trim().max(255),
-    quantity: z.number().int().positive().max(99),
   })).min(1).max(100),
-})
+}).refine((order) => new Set(order.items.map((item) => item.dishId)).size === order.items.length, '每道菜只能选择一次')
 
 app.get('/api/health', async (_request, response, next) => {
   try {
