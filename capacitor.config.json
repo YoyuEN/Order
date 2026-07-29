@@ -3,6 +3,7 @@
   "appName": "禾味点菜",
   "webDir": "dist",
   "server": {
-    "androidScheme": "https"
+    "androidScheme": "http",
+    "hostname": "localhost"
   }
 }
