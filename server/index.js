@@ -1,7 +1,7 @@
 import express from 'express'
 import cors from 'cors'
 import { z } from 'zod'
-import { createDish, createOrder, initializeDatabase, listDishes, pool } from './db.js'
+import { createDish, createOrder, deleteDish, getDish, initializeDatabase, listDishes, pool, updateDish } from './db.js'
 
 const app = express()
 const port = Number(process.env.PORT || 3001)
@@ -22,8 +22,11 @@ const dishSchema = z.object({
   desc: z.string().trim().min(1).max(500),
   spicy: z.number().int().min(0).max(5),
   image: z.string().trim().max(1000).refine((value) => value.startsWith('/') || /^https?:\/\//.test(value)),
-  options: z.array(z.string().trim().min(1).max(100)).min(1).max(6),
+  options: z.array(z.string().trim().min(1).max(100)).min(1).max(6)
+    .refine((options) => new Set(options).size === options.length, '规格名称不能重复'),
 })
+
+const idSchema = z.coerce.number().int().positive()
 
 const orderSchema = z.object({
   orderNumber: z.string().trim().min(6).max(32),
@@ -55,9 +58,48 @@ app.get('/api/dishes', async (_request, response, next) => {
   }
 })
 
+app.get('/api/dishes/:id', async (request, response, next) => {
+  try {
+    const dish = await getDish(idSchema.parse(request.params.id))
+    if (!dish) {
+      response.status(404).json({ error: '菜品不存在' })
+      return
+    }
+    response.json(dish)
+  } catch (error) {
+    next(error)
+  }
+})
+
 app.post('/api/dishes', async (request, response, next) => {
   try {
     response.status(201).json(await createDish(dishSchema.parse(request.body)))
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.put('/api/dishes/:id', async (request, response, next) => {
+  try {
+    const dish = await updateDish(idSchema.parse(request.params.id), dishSchema.parse(request.body))
+    if (!dish) {
+      response.status(404).json({ error: '菜品不存在' })
+      return
+    }
+    response.json(dish)
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.delete('/api/dishes/:id', async (request, response, next) => {
+  try {
+    const deleted = await deleteDish(idSchema.parse(request.params.id))
+    if (!deleted) {
+      response.status(404).json({ error: '菜品不存在' })
+      return
+    }
+    response.status(204).end()
   } catch (error) {
     next(error)
   }

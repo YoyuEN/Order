@@ -13,7 +13,7 @@ const savedPicks = (saved.picks || saved.cart || []).map(({ price: _price, ...it
 }))
 const state = {
   category: '全部', search: '', picks: savedPicks, table: saved.table || 'A08', guests: saved.guests || 2,
-  selectedDish: null, selectedOption: '', note: '', view: 'menu', orderNumber: '', confirmed: saved.confirmed || false, confirmedCount: 0,
+  selectedDish: null, editingDish: null, selectedOption: '', note: '', view: 'menu', orderNumber: '', confirmed: saved.confirmed || false, confirmedCount: 0,
 }
 
 const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
@@ -29,7 +29,7 @@ async function apiRequest(path, options = {}) {
       signal: controller.signal,
     })
     if (!response.ok) throw new Error(`API request failed: ${response.status}`)
-    return await response.json()
+    return response.status === 204 ? null : await response.json()
   } finally {
     window.clearTimeout(timeout)
   }
@@ -38,8 +38,9 @@ async function apiRequest(path, options = {}) {
 async function loadDishes() {
   try {
     const remoteDishes = await apiRequest('/api/dishes')
-    if (Array.isArray(remoteDishes) && remoteDishes.length) {
-      dishes = remoteDishes
+    if (Array.isArray(remoteDishes)) {
+      const localOnlyDishes = dishes.filter((dish) => dish.localOnly)
+      dishes = [...remoteDishes, ...localOnlyDishes]
       render()
     }
   } catch {
@@ -131,7 +132,7 @@ function bottomBar() {
 
 function detailView() {
   const dish = state.selectedDish
-  return `<main class="detail-view"><button class="icon-button floating-back" data-action="close" aria-label="返回菜单">${icons.back}</button>${imageMarkup(dish, true)}<section class="detail-sheet"><p class="eyebrow">${escapeHtml(dish.category)}</p><h1>${escapeHtml(dish.name)}</h1><p class="detail-desc">${escapeHtml(dish.desc)}</p><div class="detail-meta"><strong>今天就吃这个</strong><span>人气 ${dish.sales}</span></div><fieldset><legend>选择规格 <em>必选</em></legend><div class="option-list">${dish.options.map((option, index) => `<label><input type="radio" name="option" value="${escapeAttr(option)}" ${state.selectedOption === option || (!state.selectedOption && index === 0) ? 'checked' : ''}><span>${escapeHtml(option)}</span></label>`).join('')}</div></fieldset><label class="note-label" for="dish-note">口味备注 <span>选填</span></label><textarea id="dish-note" maxlength="50" placeholder="例如：不要香菜、少盐">${escapeHtml(state.note)}</textarea><button class="primary-button" data-action="confirm-add">就点这道菜</button></section></main>`
+  return `<main class="detail-view"><button class="icon-button floating-back" data-action="close" aria-label="返回菜单">${icons.back}</button>${imageMarkup(dish, true)}<section class="detail-sheet"><p class="eyebrow">${escapeHtml(dish.category)}</p><h1>${escapeHtml(dish.name)}</h1><p class="detail-desc">${escapeHtml(dish.desc)}</p><div class="detail-meta"><strong>今天就吃这个</strong><span>人气 ${dish.sales}</span></div><div class="management-actions" aria-label="菜品管理"><button class="secondary-button" data-action="edit-dish">编辑菜品</button><button class="danger-button" data-action="delete-dish">删除菜品</button></div><fieldset><legend>选择规格 <em>必选</em></legend><div class="option-list">${dish.options.map((option, index) => `<label><input type="radio" name="option" value="${escapeAttr(option)}" ${state.selectedOption === option || (!state.selectedOption && index === 0) ? 'checked' : ''}><span>${escapeHtml(option)}</span></label>`).join('')}</div></fieldset><label class="note-label" for="dish-note">口味备注 <span>选填</span></label><textarea id="dish-note" maxlength="50" placeholder="例如：不要香菜、少盐">${escapeHtml(state.note)}</textarea><button class="primary-button" data-action="confirm-add">就点这道菜</button></section></main>`
 }
 
 function pickedContent(desktop = false) {
@@ -148,18 +149,20 @@ function ordersView() {
   return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回菜单">${icons.back}</button><h1>今天吃什么</h1><span></span></header><section class="cart-page history-menu"><div class="menu-status"><span class="success-mark success-mark--small">✓</span><div><b>${state.confirmed ? '菜单已经选好啦' : '还差最后确认'}</b><span>一共 ${pickCount()} 份，都是今天想吃的</span></div></div>${pickedContent()}</section><div class="history-actions"><button class="secondary-button" data-action="menu">继续点菜</button></div></main>`
 }
 
-function newDishView() {
+function dishFormView() {
+  const dish = state.editingDish
+  const editing = Boolean(dish)
   const categoryOptions = [...new Set(dishes.map((dish) => dish.category))]
-  return `<main class="subpage form-page"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回菜单">${icons.back}</button><h1>新增菜品</h1><span></span></header>
-    <form id="new-dish-form" class="dish-form">
-      <div class="form-intro"><p class="eyebrow">菜单管理</p><h2>录入一道新菜</h2><p>保存后会立即显示在点菜菜单中，并保存在当前设备。</p></div>
-      <label for="new-dish-name">菜品名称 <em>必填</em></label><input id="new-dish-name" name="name" maxlength="20" required placeholder="例如：蒜蓉粉丝虾" autofocus>
-      <label for="new-dish-category">菜品分类 <em>必填</em></label><input id="new-dish-category" name="category" list="category-list" maxlength="10" required placeholder="选择或输入分类"><datalist id="category-list">${categoryOptions.map((category) => `<option value="${escapeAttr(category)}"></option>`).join('')}</datalist>
-      <label for="new-dish-desc">菜品描述 <em>必填</em></label><textarea id="new-dish-desc" name="desc" maxlength="60" required placeholder="介绍食材、口味或特色"></textarea>
-      <label for="new-dish-image">图片网址 <span>选填</span></label><input id="new-dish-image" name="image" type="url" inputmode="url" placeholder="https://example.com/dish.jpg"><small class="field-hint">不填写时使用默认餐厅图标；仅支持 http 或 https 图片。</small>
-      <fieldset><legend>辣度</legend><div class="option-list"><label><input type="radio" name="spicy" value="0" checked><span>不辣</span></label><label><input type="radio" name="spicy" value="1"><span>微辣 🌶</span></label><label><input type="radio" name="spicy" value="2"><span>中辣 🌶🌶</span></label><label><input type="radio" name="spicy" value="3"><span>重辣 🌶🌶🌶</span></label></div></fieldset>
-      <label for="new-dish-options">可选规格 <span>选填</span></label><input id="new-dish-options" name="options" maxlength="60" placeholder="用逗号分隔，例如：小份, 大份"><small class="field-hint">留空时使用“标准份”，最多可以填写 6 种规格。</small>
-      <button class="primary-button" type="submit">保存并加入菜单</button>
+  return `<main class="subpage form-page"><header class="subpage-header"><button class="icon-button" data-action="close-form" aria-label="${editing ? '返回菜品详情' : '返回菜单'}">${icons.back}</button><h1>${editing ? '编辑菜品' : '新增菜品'}</h1><span></span></header>
+    <form id="dish-form" class="dish-form" data-mode="${editing ? 'edit' : 'create'}">
+      <div class="form-intro"><p class="eyebrow">菜单管理</p><h2>${editing ? '更新菜品信息' : '录入一道新菜'}</h2><p>${editing ? '保存后将同步更新数据库和当前菜单。' : '保存后会立即显示在点菜菜单中，并保存在当前设备。'}</p></div>
+      <label for="dish-form-name">菜品名称 <em>必填</em></label><input id="dish-form-name" name="name" maxlength="20" required placeholder="例如：蒜蓉粉丝虾" value="${escapeAttr(dish?.name || '')}" autofocus>
+      <label for="dish-form-category">菜品分类 <em>必填</em></label><input id="dish-form-category" name="category" list="category-list" maxlength="10" required placeholder="选择或输入分类" value="${escapeAttr(dish?.category || '')}"><datalist id="category-list">${categoryOptions.map((category) => `<option value="${escapeAttr(category)}"></option>`).join('')}</datalist>
+      <label for="dish-form-desc">菜品描述 <em>必填</em></label><textarea id="dish-form-desc" name="desc" maxlength="60" required placeholder="介绍食材、口味或特色">${escapeHtml(dish?.desc || '')}</textarea>
+      <label for="dish-form-image">图片网址 <span>选填</span></label><input id="dish-form-image" name="image" type="url" inputmode="url" placeholder="https://example.com/dish.jpg" value="${dish?.image === '/icons/icon.svg' ? '' : escapeAttr(dish?.image || '')}"><small class="field-hint">不填写时使用默认餐厅图标；仅支持 http 或 https 图片。</small>
+      <fieldset><legend>辣度</legend><div class="option-list">${[0, 1, 2, 3].map((spicy) => `<label><input type="radio" name="spicy" value="${spicy}" ${(dish?.spicy || 0) === spicy ? 'checked' : ''}><span>${['不辣', '微辣 🌶', '中辣 🌶🌶', '重辣 🌶🌶🌶'][spicy]}</span></label>`).join('')}</div></fieldset>
+      <label for="dish-form-options">可选规格 <span>选填</span></label><input id="dish-form-options" name="options" maxlength="60" placeholder="用逗号分隔，例如：小份, 大份" value="${escapeAttr(dish?.options?.join(', ') || '')}"><small class="field-hint">留空时使用“标准份”，最多可以填写 6 种规格。</small>
+      <button class="primary-button" type="submit">${editing ? '保存修改' : '保存并加入菜单'}</button>
     </form></main>`
 }
 
@@ -168,7 +171,7 @@ function successView() {
 }
 
 function render() {
-  const views = { menu: menuView, detail: detailView, picks: pickedView, orders: ordersView, success: successView, newDish: newDishView }
+  const views = { menu: menuView, detail: detailView, picks: pickedView, orders: ordersView, success: successView, dishForm: dishFormView }
   document.querySelector('#app').innerHTML = views[state.view]()
   if (state.view === 'detail') document.querySelector('.floating-back')?.focus()
 }
@@ -200,6 +203,29 @@ function editTable() {
 document.addEventListener('click', async (event) => {
   const button = event.target.closest('button'); if (!button) return
   if (button.dataset.category) { state.category = button.dataset.category; render(); return }
+  const action = button.dataset.action
+  if (action === 'edit-dish') { state.editingDish = state.selectedDish; state.view = 'dishForm'; render(); return }
+  if (action === 'delete-dish') {
+    const dish = state.selectedDish
+    if (!window.confirm(`确定删除「${dish.name}」吗？此操作无法撤销。`)) return
+    button.disabled = true
+    try {
+      if (!dish.localOnly) await apiRequest(`/api/dishes/${dish.id}`, { method: 'DELETE' })
+      dishes = dishes.filter((item) => item.id !== dish.id)
+      state.picks = state.picks.filter((item) => item.dishId !== dish.id)
+      state.selectedDish = null
+      state.editingDish = null
+      state.category = dishes.some((item) => item.category === state.category) ? state.category : '全部'
+      state.view = 'menu'
+      persist()
+      render()
+      showToast(`已删除「${dish.name}」`)
+    } catch {
+      button.disabled = false
+      showToast('删除失败，请检查网络后重试')
+    }
+    return
+  }
   if (button.dataset.dish) {
     const dish = dishes.find((item) => item.id === Number(button.dataset.dish))
     if (button.classList.contains('add-button')) { addDish(dish); showToast(`已添加「${dish.name}」`); render() } else openDish(button.dataset.dish)
@@ -208,11 +234,11 @@ document.addEventListener('click', async (event) => {
   if (button.dataset.delta) {
     const index = Number(button.dataset.index); state.picks[index].quantity += Number(button.dataset.delta); if (state.picks[index].quantity <= 0) state.picks.splice(index, 1); persist(); render(); return
   }
-  const action = button.dataset.action
   if (action === 'close' || action === 'menu') { state.view = 'menu'; render() }
+  if (action === 'close-form') { state.view = state.editingDish ? 'detail' : 'menu'; state.editingDish = null; render() }
   if (action === 'picks') { state.view = 'picks'; render() }
   if (action === 'orders') { state.view = 'orders'; render() }
-  if (action === 'new-dish') { state.view = 'newDish'; render() }
+  if (action === 'new-dish') { state.editingDish = null; state.view = 'dishForm'; render() }
   if (action === 'table') editTable()
   if (action === 'clear' && window.confirm('确定清空全部已点菜品吗？')) { state.picks = []; persist(); render() }
   if (action === 'confirm-add') { const option = document.querySelector('input[name="option"]:checked')?.value || state.selectedDish.options[0]; const note = document.querySelector('#dish-note').value.trim(); addDish(state.selectedDish, option, note); state.view = 'menu'; render(); showToast('已经点好这道菜啦') }
@@ -239,8 +265,9 @@ document.addEventListener('click', async (event) => {
 })
 
 document.addEventListener('submit', async (event) => {
-  if (event.target.id !== 'new-dish-form') return
+  if (event.target.id !== 'dish-form') return
   event.preventDefault()
+  const editingDish = state.editingDish
   const formData = new FormData(event.target)
   const imageInput = formData.get('image').trim()
   let image = '/icons/icon.svg'
@@ -250,12 +277,13 @@ document.addEventListener('submit', async (event) => {
       if (!['http:', 'https:'].includes(url.protocol)) throw new Error('unsupported protocol')
       image = url.href
     } catch {
-      document.querySelector('#new-dish-image').setCustomValidity('请输入有效的 http 或 https 图片网址')
-      document.querySelector('#new-dish-image').reportValidity()
+      document.querySelector('#dish-form-image').setCustomValidity('请输入有效的 http 或 https 图片网址')
+      document.querySelector('#dish-form-image').reportValidity()
       return
     }
   }
   const options = formData.get('options').split(/[,，]/).map((option) => option.trim()).filter(Boolean).slice(0, 6)
+  const uniqueOptions = [...new Set(options)]
   let dish = {
     category: formData.get('category').trim(),
     name: formData.get('name').trim(),
@@ -263,25 +291,51 @@ document.addEventListener('submit', async (event) => {
     sales: 0,
     spicy: Number(formData.get('spicy')),
     image,
-    options: options.length ? options : ['标准份'],
+    options: uniqueOptions.length ? uniqueOptions : ['标准份'],
   }
-  try {
-    dish = await apiRequest('/api/dishes', { method: 'POST', body: JSON.stringify(dish) })
-  } catch {
-    dish = { ...dish, id: Date.now(), custom: true }
-    showToast('菜品暂时只保存在当前设备')
+  if (editingDish) {
+    if (editingDish.localOnly) {
+      dish = { ...editingDish, ...dish }
+    } else {
+      try {
+        dish = await apiRequest(`/api/dishes/${editingDish.id}`, { method: 'PUT', body: JSON.stringify(dish) })
+      } catch {
+        showToast('修改失败，请检查网络后重试')
+        return
+      }
+    }
+    dishes = dishes.map((item) => item.id === dish.id ? dish : item)
+    state.picks = state.picks.map((item) => item.dishId === dish.id ? { ...item, name: dish.name, option: dish.options.includes(item.option) ? item.option : dish.options[0] } : item)
+    const mergedPicks = new Map()
+    for (const item of state.picks) {
+      const key = `${item.dishId}-${item.option}-${item.note}`
+      const existing = mergedPicks.get(key)
+      if (existing) existing.quantity += item.quantity
+      else mergedPicks.set(key, { ...item, key })
+    }
+    state.picks = [...mergedPicks.values()]
+    state.selectedDish = dish
+  } else {
+    try {
+      dish = await apiRequest('/api/dishes', { method: 'POST', body: JSON.stringify(dish) })
+    } catch {
+      dish = { ...dish, id: Date.now(), custom: true, localOnly: true }
+      showToast('菜品暂时只保存在当前设备')
+    }
+    dishes.push(dish)
   }
-  dishes.push(dish)
   state.category = dish.category
   state.search = ''
   state.view = 'menu'
+  state.editingDish = null
   persist()
   render()
-  showToast(`已新增「${dish.name}」`)
+  showToast(`${editingDish ? '已更新' : '已新增'}「${dish.name}」`)
 })
 
 document.addEventListener('input', (event) => {
   if (event.target.id === 'dish-search') { state.search = event.target.value; const position = event.target.selectionStart; render(); const input = document.querySelector('#dish-search'); input.focus(); input.setSelectionRange(position, position) }
+  if (event.target.id === 'dish-form-image') event.target.setCustomValidity('')
 })
 
 registerSW({ onOfflineReady: () => showToast('应用已可离线使用'), onNeedRefresh: () => showToast('发现新版本，将自动更新') })

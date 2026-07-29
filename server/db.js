@@ -71,8 +71,23 @@ export async function initializeDatabase() {
       CONSTRAINT fk_order_items_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
       CONSTRAINT fk_order_items_dish FOREIGN KEY (dish_id) REFERENCES dishes(id) ON DELETE SET NULL
     ) ENGINE=InnoDB`)
-
-    await seedMissingDefaultDishes(connection)
+    await connection.query(`CREATE TABLE IF NOT EXISTS app_metadata (
+      metadata_key VARCHAR(100) NOT NULL,
+      metadata_value VARCHAR(500) NOT NULL,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (metadata_key)
+    ) ENGINE=InnoDB`)
+    const [[seedVersion]] = await connection.execute(
+      'SELECT metadata_value FROM app_metadata WHERE metadata_key = ?',
+      ['default_dishes_version'],
+    )
+    if (!seedVersion) {
+      await seedMissingDefaultDishes(connection)
+      await connection.execute(
+        'INSERT INTO app_metadata (metadata_key, metadata_value) VALUES (?, ?)',
+        ['default_dishes_version', '1'],
+      )
+    }
   } finally {
     connection.release()
   }
@@ -129,6 +144,25 @@ export async function listDishes() {
   }))
 }
 
+export async function getDish(id, connection = pool) {
+  const [[row]] = await connection.execute(
+    `SELECT id, category, name, description, sales, spicy, badge, image_url, sold_out, is_custom
+     FROM dishes WHERE id = ?`,
+    [id],
+  )
+  if (!row) return null
+  const [optionRows] = await connection.execute(
+    'SELECT option_name FROM dish_options WHERE dish_id = ? ORDER BY sort_order, id',
+    [id],
+  )
+  return {
+    id: Number(row.id), category: row.category, name: row.name, desc: row.description,
+    sales: row.sales, spicy: row.spicy, badge: row.badge || undefined,
+    image: row.image_url || '/icons/icon.svg', soldOut: Boolean(row.sold_out),
+    custom: Boolean(row.is_custom), options: optionRows.map((option) => option.option_name),
+  }
+}
+
 export async function createDish(dish) {
   const connection = await pool.getConnection()
   try {
@@ -152,6 +186,43 @@ export async function createDish(dish) {
   } finally {
     connection.release()
   }
+}
+
+export async function updateDish(id, dish) {
+  const connection = await pool.getConnection()
+  try {
+    await connection.beginTransaction()
+    const [result] = await connection.execute(
+      `UPDATE dishes
+       SET category = ?, name = ?, description = ?, spicy = ?, image_url = ?
+       WHERE id = ?`,
+      [dish.category, dish.name, dish.desc, dish.spicy, dish.image, id],
+    )
+    if (!result.affectedRows) {
+      await connection.rollback()
+      return null
+    }
+    await connection.execute('DELETE FROM dish_options WHERE dish_id = ?', [id])
+    for (const [index, option] of dish.options.entries()) {
+      await connection.execute(
+        'INSERT INTO dish_options (dish_id, option_name, sort_order) VALUES (?, ?, ?)',
+        [id, option, index],
+      )
+    }
+    const updatedDish = await getDish(id, connection)
+    await connection.commit()
+    return updatedDish
+  } catch (error) {
+    await connection.rollback()
+    throw error
+  } finally {
+    connection.release()
+  }
+}
+
+export async function deleteDish(id) {
+  const [result] = await pool.execute('DELETE FROM dishes WHERE id = ?', [id])
+  return result.affectedRows > 0
 }
 
 export async function createOrder(order) {

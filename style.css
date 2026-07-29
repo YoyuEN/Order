@@ -608,6 +608,38 @@ svg {
   font-size: 11px;
 }
 
+.management-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 16px 0 4px;
+}
+
+.management-actions .secondary-button,
+.danger-button {
+  min-height: 44px;
+  margin: 0;
+}
+
+.danger-button {
+  padding: 10px 16px;
+  color: #a52f24;
+  background: #fff3f0;
+  border: 1px solid #e9b9b1;
+  border-radius: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.danger-button:hover {
+  background: #ffe8e3;
+}
+
+.danger-button:disabled {
+  cursor: wait;
+  opacity: .55;
+}
+
 fieldset {
   margin: 20px 0;
   padding: 0;
