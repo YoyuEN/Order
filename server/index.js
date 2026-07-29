@@ -11,7 +11,11 @@ app.disable('x-powered-by')
 app.use(cors({
   origin(origin, callback) {
     if (!origin || allowedOrigins.has(origin)) callback(null, true)
-    else callback(new Error('Origin not allowed'))
+    else {
+      const error = new Error('Origin not allowed')
+      error.status = 403
+      callback(error)
+    }
   },
 }))
 app.use(express.json({ limit: '32kb' }))
@@ -119,6 +123,14 @@ app.get('/{*path}', (_request, response) => response.sendFile('index.html', { ro
 app.use((error, _request, response, _next) => {
   if (error instanceof z.ZodError) {
     response.status(400).json({ error: '提交的数据格式不正确', details: error.issues })
+    return
+  }
+  if (error.type === 'entity.parse.failed') {
+    response.status(400).json({ error: '请求内容不是有效的 JSON' })
+    return
+  }
+  if (error.status === 403) {
+    response.status(403).json({ error: '当前来源无权访问服务' })
     return
   }
   console.error(error)
