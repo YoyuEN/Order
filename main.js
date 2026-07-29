@@ -1,21 +1,9 @@
 import './style.css'
 import { registerSW } from 'virtual:pwa-register'
-
-const defaultDishes = [
-  { id: 1, category: '招牌推荐', name: '金汤酸菜鱼', desc: '鲜活黑鱼，酸香金汤，配菜入味', sales: 328, spicy: 1, badge: '店长推荐', image: 'https://images.unsplash.com/photo-1569058242253-92a9c755a0ec?auto=format&fit=crop&w=800&q=80', options: ['微辣', '中辣', '重辣'] },
-  { id: 2, category: '招牌推荐', name: '果木烤鸭', desc: '皮酥肉嫩，配手工薄饼与甜面酱', sales: 216, badge: '招牌', image: 'https://images.unsplash.com/photo-1518492104633-130d0cc84637?auto=format&fit=crop&w=800&q=80', options: ['半只', '整只'] },
-  { id: 3, category: '热菜', name: '农家小炒肉', desc: '青椒现炒，锅气十足，下饭首选', sales: 453, spicy: 2, image: 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?auto=format&fit=crop&w=800&q=80', options: ['少辣', '正常辣', '加辣'] },
-  { id: 4, category: '热菜', name: '板栗红烧肉', desc: '慢火煨制，肥而不腻，板栗软糯', sales: 189, image: 'https://images.unsplash.com/photo-1547592180-85f173990554?auto=format&fit=crop&w=800&q=80', options: ['标准份', '大份'] },
-  { id: 5, category: '热菜', name: '清炒时蔬', desc: '当日新鲜绿叶菜，清爽少油', sales: 127, image: 'https://images.unsplash.com/photo-1540420773420-3366772f4999?auto=format&fit=crop&w=800&q=80', options: ['少油', '正常'] },
-  { id: 6, category: '凉菜', name: '藤椒口水鸡', desc: '鲜麻爽口，鸡肉嫩滑', sales: 264, spicy: 2, image: 'https://images.unsplash.com/photo-1604908176997-125f25cc6f3d?auto=format&fit=crop&w=800&q=80', options: ['微麻', '正常麻'] },
-  { id: 7, category: '凉菜', name: '桂花糖藕', desc: '糯米香甜，桂花清香', sales: 98, soldOut: true, image: 'https://images.unsplash.com/photo-1601050690597-df0568f70950?auto=format&fit=crop&w=800&q=80', options: ['标准份'] },
-  { id: 8, category: '主食', name: '扬州炒饭', desc: '粒粒分明，虾仁、鸡蛋与时蔬', sales: 356, image: 'https://images.unsplash.com/photo-1603133872878-684f208fb84b?auto=format&fit=crop&w=800&q=80', options: ['小份', '大份'] },
-  { id: 9, category: '汤品', name: '松茸菌菇汤', desc: '多种菌菇慢炖，鲜美清润', sales: 142, image: 'https://images.unsplash.com/photo-1547592166-23ac45744acd?auto=format&fit=crop&w=800&q=80', options: ['2-3人份', '4-6人份'] },
-  { id: 10, category: '饮品', name: '手作酸梅汤', desc: '古法熬制，冰爽解腻', sales: 514, image: 'https://images.unsplash.com/photo-1544145945-f90425340c7e?auto=format&fit=crop&w=800&q=80', options: ['常温', '少冰', '正常冰'] },
-]
+import { defaultDishes } from './menu-data.js'
 
 const saved = JSON.parse(localStorage.getItem('hewei-order-state') || '{}')
-const dishes = [...defaultDishes, ...(Array.isArray(saved.customDishes) ? saved.customDishes : [])].map(({ price: _price, ...dish }) => ({
+let dishes = [...defaultDishes, ...(Array.isArray(saved.customDishes) ? saved.customDishes : [])].map(({ price: _price, ...dish }) => ({
   ...dish,
   options: (dish.options || ['标准份']).map((option) => option.replace(/\s*\+¥\d+(?:\.\d+)?$/, '')),
 }))
@@ -26,6 +14,65 @@ const savedPicks = (saved.picks || saved.cart || []).map(({ price: _price, ...it
 const state = {
   category: '全部', search: '', picks: savedPicks, table: saved.table || 'A08', guests: saved.guests || 2,
   selectedDish: null, selectedOption: '', note: '', view: 'menu', orderNumber: '', confirmed: saved.confirmed || false, confirmedCount: 0,
+}
+
+const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
+const pendingOrdersKey = 'hewei-pending-orders'
+
+async function apiRequest(path, options = {}) {
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), 8000)
+  try {
+    const response = await fetch(`${apiBaseUrl}${path}`, {
+      ...options,
+      headers: { 'Content-Type': 'application/json', ...options.headers },
+      signal: controller.signal,
+    })
+    if (!response.ok) throw new Error(`API request failed: ${response.status}`)
+    return await response.json()
+  } finally {
+    window.clearTimeout(timeout)
+  }
+}
+
+async function loadDishes() {
+  try {
+    const remoteDishes = await apiRequest('/api/dishes')
+    if (Array.isArray(remoteDishes) && remoteDishes.length) {
+      dishes = remoteDishes
+      render()
+    }
+  } catch {
+    showToast('当前使用离线菜单')
+  }
+}
+
+function getPendingOrders() {
+  try {
+    const pendingOrders = JSON.parse(localStorage.getItem(pendingOrdersKey) || '[]')
+    return Array.isArray(pendingOrders) ? pendingOrders : []
+  } catch {
+    return []
+  }
+}
+
+function savePendingOrders(orders) {
+  localStorage.setItem(pendingOrdersKey, JSON.stringify(orders))
+}
+
+async function syncPendingOrders() {
+  const pendingOrders = getPendingOrders()
+  if (!pendingOrders.length) return
+  const remainingOrders = []
+  for (const order of pendingOrders) {
+    try {
+      await apiRequest('/api/orders', { method: 'POST', body: JSON.stringify(order) })
+    } catch {
+      remainingOrders.push(order)
+    }
+  }
+  savePendingOrders(remainingOrders)
+  if (remainingOrders.length < pendingOrders.length) showToast('离线订单已同步')
 }
 
 const icons = {
@@ -150,7 +197,7 @@ function editTable() {
   state.table = table.trim().slice(0, 8) || state.table; state.guests = Math.max(1, Math.min(20, Number.parseInt(guests, 10) || state.guests)); persist(); render()
 }
 
-document.addEventListener('click', (event) => {
+document.addEventListener('click', async (event) => {
   const button = event.target.closest('button'); if (!button) return
   if (button.dataset.category) { state.category = button.dataset.category; render(); return }
   if (button.dataset.dish) {
@@ -169,10 +216,29 @@ document.addEventListener('click', (event) => {
   if (action === 'table') editTable()
   if (action === 'clear' && window.confirm('确定清空全部已点菜品吗？')) { state.picks = []; persist(); render() }
   if (action === 'confirm-add') { const option = document.querySelector('input[name="option"]:checked')?.value || state.selectedDish.options[0]; const note = document.querySelector('#dish-note').value.trim(); addDish(state.selectedDish, option, note); state.view = 'menu'; render(); showToast('已经点好这道菜啦') }
-  if (action === 'confirm-menu') { if (!state.picks.length) return; state.confirmedCount = pickCount(); state.confirmed = true; state.orderNumber = String(Date.now()).slice(-6); persist(); state.view = 'success'; render() }
+  if (action === 'confirm-menu') {
+    if (!state.picks.length) return
+    state.confirmedCount = pickCount()
+    state.confirmed = true
+    state.orderNumber = `ORD${Date.now()}`
+    persist()
+    const order = { orderNumber: state.orderNumber, table: state.table, guests: state.guests, items: state.picks }
+    try {
+      await apiRequest('/api/orders', {
+        method: 'POST',
+        body: JSON.stringify(order),
+      })
+    } catch {
+      const pendingOrders = getPendingOrders().filter((item) => item.orderNumber !== order.orderNumber)
+      savePendingOrders([...pendingOrders, order])
+      showToast('订单已暂存，联网后自动同步')
+    }
+    state.view = 'success'
+    render()
+  }
 })
 
-document.addEventListener('submit', (event) => {
+document.addEventListener('submit', async (event) => {
   if (event.target.id !== 'new-dish-form') return
   event.preventDefault()
   const formData = new FormData(event.target)
@@ -190,9 +256,7 @@ document.addEventListener('submit', (event) => {
     }
   }
   const options = formData.get('options').split(/[,，]/).map((option) => option.trim()).filter(Boolean).slice(0, 6)
-  const dish = {
-    id: Date.now(),
-    custom: true,
+  let dish = {
     category: formData.get('category').trim(),
     name: formData.get('name').trim(),
     desc: formData.get('desc').trim(),
@@ -200,6 +264,12 @@ document.addEventListener('submit', (event) => {
     spicy: Number(formData.get('spicy')),
     image,
     options: options.length ? options : ['标准份'],
+  }
+  try {
+    dish = await apiRequest('/api/dishes', { method: 'POST', body: JSON.stringify(dish) })
+  } catch {
+    dish = { ...dish, id: Date.now(), custom: true }
+    showToast('菜品暂时只保存在当前设备')
   }
   dishes.push(dish)
   state.category = dish.category
@@ -216,3 +286,6 @@ document.addEventListener('input', (event) => {
 
 registerSW({ onOfflineReady: () => showToast('应用已可离线使用'), onNeedRefresh: () => showToast('发现新版本，将自动更新') })
 render()
+loadDishes()
+syncPendingOrders()
+window.addEventListener('online', syncPendingOrders)

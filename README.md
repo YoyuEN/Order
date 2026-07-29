@@ -7,9 +7,11 @@
 要求 Node.js 18 或更高版本。
 
 1. 安装依赖：`npm install`
-2. 启动开发服务器：`npm run dev`
-3. 生成生产版本：`npm run build`
-4. 预览生产版本与 PWA：`npm run preview`
+2. 将 `.env.example` 复制为 `.env.local`，填写 RDS 连接信息。不要提交该文件。
+3. 启动 API：`npm run dev:api`
+4. 在另一个终端启动前端：`npm run dev`
+5. 生成生产版本：`npm run build`
+6. 生产运行：`npm start`
 
 浏览器开发模式不会启用完整的 Service Worker 行为。请使用生产预览验证安装和离线功能。在 Chrome/Edge 地址栏或应用菜单中选择“安装应用”。
 
@@ -27,8 +29,11 @@
 
 ## 数据说明
 
-- 已点菜单、自定义菜品、桌号与用餐人数保存在浏览器 `localStorage` 中。
-- 当前下单流程为本地演示实现；接入真实餐厅时，应将菜单、库存和订单提交替换为后端 API。
+- 菜单从 MySQL 读取，新增菜品和确认订单通过服务端 API 写入 MySQL。
+- 已点菜单、桌号与用餐人数仍保存在浏览器 `localStorage` 中，供离线回退使用。
+- 离线确认的订单会暂存在当前设备，并在应用下次启动或网络恢复时自动补传；订单号唯一约束可防止重复入库。
+- 浏览器本地开发通过 Vite 代理访问 API；Android 包必须通过 `VITE_API_URL` 指向已部署的 HTTPS API，不能直接连接 RDS。
+- 部署 API 时通过 `ALLOWED_ORIGINS` 配置允许的网页来源，多个来源使用逗号分隔；默认允许 Capacitor 的 `https://localhost` 与 `http://localhost`。
 - 菜品图片使用在线示例图，并配置了加载失败占位与 PWA 运行时缓存。正式使用前建议替换为餐厅自有图片。
 
 ## 常用配置
