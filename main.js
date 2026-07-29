@@ -101,6 +101,7 @@ const icons = {
   home: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="m3 11 9-8 9 8v9H8v-7h8v7"/></svg>',
   receipt: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Zm3 5h6m-6 4h6"/></svg>',
   plus: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+  upload: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v5h14v-5"/></svg>',
 }
 
 function persist() {
@@ -176,7 +177,7 @@ function dishFormView() {
       <label for="dish-form-name">菜品名称 <em>必填</em></label><input id="dish-form-name" name="name" maxlength="20" required placeholder="例如：蒜蓉粉丝虾" value="${escapeAttr(dish?.name || '')}" autofocus>
       <label for="dish-form-category">菜品分类 <em>必填</em></label><input id="dish-form-category" name="category" list="category-list" maxlength="10" required placeholder="选择或输入分类" value="${escapeAttr(dish?.category || '')}"><datalist id="category-list">${categoryOptions.map((category) => `<option value="${escapeAttr(category)}"></option>`).join('')}</datalist>
       <label for="dish-form-desc">菜品描述 <em>必填</em></label><textarea id="dish-form-desc" name="desc" maxlength="60" required placeholder="介绍食材、口味或特色">${escapeHtml(dish?.desc || '')}</textarea>
-      <label for="dish-form-image">菜品图片 <span>选填</span></label><input id="dish-form-image" name="imageFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif"><small class="field-hint">支持 JPG、PNG、WebP 或 GIF，图片不能超过 5MB；不选择时${editing ? '保留原图' : '使用默认餐厅图标'}。</small>
+      <div class="field-label">菜品图片 <span>选填</span></div><input id="dish-form-image" class="upload-input" name="imageFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif" aria-describedby="dish-image-hint dish-image-status"><label class="upload-button" for="dish-form-image"><span class="upload-icon">${icons.upload}</span><span class="upload-copy"><strong>选择本地图片</strong><small id="dish-image-status">点击浏览手机或电脑中的图片</small></span><span class="upload-action" aria-hidden="true">浏览</span></label><small id="dish-image-hint" class="field-hint">支持 JPG、PNG、WebP 或 GIF，图片不能超过 5MB；不选择时${editing ? '保留原图' : '使用默认餐厅图标'}。</small>
       <div id="dish-image-preview" class="dish-image-preview ${dish?.image && dish.image !== '/icons/icon.svg' ? '' : 'hidden'}">${dish?.image && dish.image !== '/icons/icon.svg' ? `<img src="${escapeAttr(dish.image)}" alt="当前菜品图片">` : ''}</div>
       <fieldset><legend>辣度</legend><div class="option-list">${[0, 1, 2, 3].map((spicy) => `<label><input type="radio" name="spicy" value="${spicy}" ${(dish?.spicy || 0) === spicy ? 'checked' : ''}><span>${['不辣', '微辣 🌶', '中辣 🌶🌶', '重辣 🌶🌶🌶'][spicy]}</span></label>`).join('')}</div></fieldset>
       <label for="dish-form-options">可选规格 <span>选填</span></label><input id="dish-form-options" name="options" maxlength="60" placeholder="用逗号分隔，例如：小份, 大份" value="${escapeAttr(dish?.options?.join(', ') || '')}"><small class="field-hint">留空时使用“标准份”，最多可以填写 6 种规格。</small>
@@ -339,12 +340,18 @@ document.addEventListener('change', (event) => {
   if (event.target.id !== 'dish-form-image') return
   const file = event.target.files[0]
   const preview = document.querySelector('#dish-image-preview')
-  if (!file) return
+  const status = document.querySelector('#dish-image-status')
+  if (!file) {
+    status.textContent = '点击浏览手机或电脑中的图片'
+    return
+  }
   if (file.size > 5 * 1024 * 1024) {
     event.target.value = ''
+    status.textContent = '点击浏览手机或电脑中的图片'
     showToast('图片不能超过 5MB')
     return
   }
+  status.textContent = file.name
   const image = document.createElement('img')
   image.src = URL.createObjectURL(file)
   image.alt = '待上传的菜品图片预览'
