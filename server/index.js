@@ -1,11 +1,43 @@
 import express from 'express'
 import cors from 'cors'
+import crypto from 'node:crypto'
+import path from 'node:path'
+import { mkdir } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
+import multer from 'multer'
 import { z } from 'zod'
 import { createDish, createOrder, deleteDish, getDish, initializeDatabase, listDishes, pool, updateDish } from './db.js'
 
 const app = express()
 const port = Number(process.env.PORT || 3001)
 const allowedOrigins = new Set((process.env.ALLOWED_ORIGINS || 'https://localhost,http://localhost').split(',').map((origin) => origin.trim()).filter(Boolean))
+const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+const uploadsDirectory = path.join(projectRoot, 'uploads', 'dishes')
+const imageExtensions = new Map([
+  ['image/jpeg', '.jpg'],
+  ['image/png', '.png'],
+  ['image/webp', '.webp'],
+  ['image/gif', '.gif'],
+])
+
+await mkdir(uploadsDirectory, { recursive: true })
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: uploadsDirectory,
+    filename(_request, file, callback) {
+      callback(null, `${crypto.randomUUID()}${imageExtensions.get(file.mimetype) || ''}`)
+    },
+  }),
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  fileFilter(_request, file, callback) {
+    if (!imageExtensions.has(file.mimetype)) {
+      callback(new multer.MulterError('LIMIT_UNEXPECTED_FILE', 'image'))
+      return
+    }
+    callback(null, true)
+  },
+})
 
 app.disable('x-powered-by')
 app.use(cors({
@@ -19,6 +51,13 @@ app.use(cors({
   },
 }))
 app.use(express.json({ limit: '32kb' }))
+app.use('/uploads', express.static(path.join(projectRoot, 'uploads'), {
+  fallthrough: false,
+  setHeaders(response) {
+    response.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+    response.setHeader('X-Content-Type-Options', 'nosniff')
+  },
+}))
 
 const dishSchema = z.object({
   category: z.string().trim().min(1).max(50),
@@ -57,6 +96,14 @@ app.get('/api/dishes', async (_request, response, next) => {
   } catch (error) {
     next(error)
   }
+})
+
+app.post('/api/uploads/dish-image', upload.single('image'), (request, response) => {
+  if (!request.file) {
+    response.status(400).json({ error: '请选择需要上传的图片' })
+    return
+  }
+  response.status(201).json({ url: `/uploads/dishes/${request.file.filename}` })
 })
 
 app.get('/api/dishes/:id', async (request, response, next) => {
@@ -118,6 +165,11 @@ app.use(express.static('dist'))
 app.get('/{*path}', (_request, response) => response.sendFile('index.html', { root: 'dist' }))
 
 app.use((error, _request, response, _next) => {
+  if (error instanceof multer.MulterError) {
+    const message = error.code === 'LIMIT_FILE_SIZE' ? '图片不能超过 5MB' : '仅支持 JPG、PNG、WebP 或 GIF 图片'
+    response.status(400).json({ error: message })
+    return
+  }
   if (error instanceof z.ZodError) {
     response.status(400).json({ error: '提交的数据格式不正确', details: error.issues })
     return

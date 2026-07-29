@@ -35,6 +35,24 @@ async function apiRequest(path, options = {}) {
   }
 }
 
+async function uploadDishImage(file) {
+  const controller = new AbortController()
+  const timeout = window.setTimeout(() => controller.abort(), 15000)
+  const body = new FormData()
+  body.append('image', file)
+  try {
+    const response = await fetch(`${apiBaseUrl}/api/uploads/dish-image`, { method: 'POST', body, signal: controller.signal })
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({}))
+      throw new Error(result.error || '图片上传失败')
+    }
+    const result = await response.json()
+    return result.url.startsWith('/') && apiBaseUrl ? `${apiBaseUrl}${result.url}` : result.url
+  } finally {
+    window.clearTimeout(timeout)
+  }
+}
+
 async function loadDishes() {
   try {
     const remoteDishes = await apiRequest('/api/dishes')
@@ -158,7 +176,8 @@ function dishFormView() {
       <label for="dish-form-name">菜品名称 <em>必填</em></label><input id="dish-form-name" name="name" maxlength="20" required placeholder="例如：蒜蓉粉丝虾" value="${escapeAttr(dish?.name || '')}" autofocus>
       <label for="dish-form-category">菜品分类 <em>必填</em></label><input id="dish-form-category" name="category" list="category-list" maxlength="10" required placeholder="选择或输入分类" value="${escapeAttr(dish?.category || '')}"><datalist id="category-list">${categoryOptions.map((category) => `<option value="${escapeAttr(category)}"></option>`).join('')}</datalist>
       <label for="dish-form-desc">菜品描述 <em>必填</em></label><textarea id="dish-form-desc" name="desc" maxlength="60" required placeholder="介绍食材、口味或特色">${escapeHtml(dish?.desc || '')}</textarea>
-      <label for="dish-form-image">图片网址 <span>选填</span></label><input id="dish-form-image" name="image" type="url" inputmode="url" placeholder="https://example.com/dish.jpg" value="${dish?.image === '/icons/icon.svg' ? '' : escapeAttr(dish?.image || '')}"><small class="field-hint">不填写时使用默认餐厅图标；仅支持 http 或 https 图片。</small>
+      <label for="dish-form-image">菜品图片 <span>选填</span></label><input id="dish-form-image" name="imageFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif"><small class="field-hint">支持 JPG、PNG、WebP 或 GIF，图片不能超过 5MB；不选择时${editing ? '保留原图' : '使用默认餐厅图标'}。</small>
+      <div id="dish-image-preview" class="dish-image-preview ${dish?.image && dish.image !== '/icons/icon.svg' ? '' : 'hidden'}">${dish?.image && dish.image !== '/icons/icon.svg' ? `<img src="${escapeAttr(dish.image)}" alt="当前菜品图片">` : ''}</div>
       <fieldset><legend>辣度</legend><div class="option-list">${[0, 1, 2, 3].map((spicy) => `<label><input type="radio" name="spicy" value="${spicy}" ${(dish?.spicy || 0) === spicy ? 'checked' : ''}><span>${['不辣', '微辣 🌶', '中辣 🌶🌶', '重辣 🌶🌶🌶'][spicy]}</span></label>`).join('')}</div></fieldset>
       <label for="dish-form-options">可选规格 <span>选填</span></label><input id="dish-form-options" name="options" maxlength="60" placeholder="用逗号分隔，例如：小份, 大份" value="${escapeAttr(dish?.options?.join(', ') || '')}"><small class="field-hint">留空时使用“标准份”，最多可以填写 6 种规格。</small>
       <button class="primary-button" type="submit">${editing ? '保存修改' : '保存并加入菜单'}</button>
@@ -258,16 +277,13 @@ document.addEventListener('submit', async (event) => {
   event.preventDefault()
   const editingDish = state.editingDish
   const formData = new FormData(event.target)
-  const imageInput = formData.get('image').trim()
-  let image = '/icons/icon.svg'
-  if (imageInput) {
+  const imageFile = formData.get('imageFile')
+  let image = editingDish?.image || '/icons/icon.svg'
+  if (imageFile?.size) {
     try {
-      const url = new URL(imageInput)
-      if (!['http:', 'https:'].includes(url.protocol)) throw new Error('unsupported protocol')
-      image = url.href
-    } catch {
-      document.querySelector('#dish-form-image').setCustomValidity('请输入有效的 http 或 https 图片网址')
-      document.querySelector('#dish-form-image').reportValidity()
+      image = await uploadDishImage(imageFile)
+    } catch (error) {
+      showToast(error.message || '图片上传失败，请检查网络后重试')
       return
     }
   }
@@ -317,7 +333,24 @@ document.addEventListener('submit', async (event) => {
 
 document.addEventListener('input', (event) => {
   if (event.target.id === 'dish-search') { state.search = event.target.value; const position = event.target.selectionStart; render(); const input = document.querySelector('#dish-search'); input.focus(); input.setSelectionRange(position, position) }
-  if (event.target.id === 'dish-form-image') event.target.setCustomValidity('')
+})
+
+document.addEventListener('change', (event) => {
+  if (event.target.id !== 'dish-form-image') return
+  const file = event.target.files[0]
+  const preview = document.querySelector('#dish-image-preview')
+  if (!file) return
+  if (file.size > 5 * 1024 * 1024) {
+    event.target.value = ''
+    showToast('图片不能超过 5MB')
+    return
+  }
+  const image = document.createElement('img')
+  image.src = URL.createObjectURL(file)
+  image.alt = '待上传的菜品图片预览'
+  image.addEventListener('load', () => URL.revokeObjectURL(image.src), { once: true })
+  preview.replaceChildren(image)
+  preview.classList.remove('hidden')
 })
 
 registerSW({ onOfflineReady: () => showToast('应用已可离线使用'), onNeedRefresh: () => showToast('发现新版本，将自动更新') })
