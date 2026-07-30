@@ -257,3 +257,27 @@ export async function createOrder(order) {
     connection.release()
   }
 }
+
+export async function getLatestOrder() {
+  const [[order]] = await pool.query(
+    `SELECT id, order_number, created_at
+     FROM orders WHERE status = 'confirmed' ORDER BY id DESC LIMIT 1`,
+  )
+  if (!order) return null
+
+  const [itemRows] = await pool.execute(
+    `SELECT dish_id, dish_name, option_name, note
+     FROM order_items WHERE order_id = ? ORDER BY id`,
+    [order.id],
+  )
+  return {
+    orderNumber: order.order_number,
+    createdAt: order.created_at,
+    items: itemRows.map((item) => ({
+      dishId: Number(item.dish_id),
+      name: item.dish_name,
+      option: item.option_name,
+      note: item.note,
+    })),
+  }
+}

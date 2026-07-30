@@ -1,23 +1,15 @@
 import './style.css'
 import { registerSW } from 'virtual:pwa-register'
-import { defaultDishes } from './menu-data.js'
 
-const saved = JSON.parse(localStorage.getItem('hewei-order-state') || '{}')
-let dishes = [...defaultDishes, ...(Array.isArray(saved.customDishes) ? saved.customDishes : [])].map(({ price: _price, ...dish }) => ({
-  ...dish,
-  options: (dish.options || ['标准份']).map((option) => option.replace(/\s*\+¥\d+(?:\.\d+)?$/, '')),
-}))
-const savedPicks = [...new Map((saved.picks || saved.cart || []).map(({ price: _price, quantity: _quantity, ...item }) => [
-  Number(item.dishId),
-  { ...item, key: String(item.dishId), option: (item.option || '标准份').replace(/\s*\+¥\d+(?:\.\d+)?$/, '') },
-])).values()]
+let dishes = []
+let dishesStatus = 'loading'
 const state = {
-  category: '全部', search: '', picks: savedPicks,
-  selectedDish: null, editingDish: null, selectedOption: '', note: '', view: 'menu', orderNumber: '', confirmed: saved.confirmed || false, confirmedCount: 0,
+  category: '全部', search: '', picks: [],
+  selectedDish: null, editingDish: null, selectedOption: '', note: '', view: 'menu', orderNumber: '', confirmed: false, confirmedCount: 0,
 }
 
 const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
-const pendingOrdersKey = 'hewei-pending-orders'
+const orderRefreshInterval = 10000
 
 async function apiRequest(path, options = {}) {
   const controller = new AbortController()
@@ -54,44 +46,37 @@ async function uploadDishImage(file) {
 }
 
 async function loadDishes() {
+  dishesStatus = 'loading'
+  render()
   try {
     const remoteDishes = await apiRequest('/api/dishes')
     if (Array.isArray(remoteDishes)) {
-      const localOnlyDishes = dishes.filter((dish) => dish.localOnly)
-      dishes = [...remoteDishes, ...localOnlyDishes]
+      dishes = remoteDishes
+      dishesStatus = 'ready'
       render()
     }
   } catch {
-    showToast('当前使用离线菜单')
+    dishes = []
+    dishesStatus = 'error'
+    render()
+    showToast('菜单加载失败，请检查网络后重试')
   }
 }
 
-function getPendingOrders() {
+async function loadLatestOrder({ notify = false } = {}) {
+  if (state.picks.length && !state.confirmed) return
   try {
-    const pendingOrders = JSON.parse(localStorage.getItem(pendingOrdersKey) || '[]')
-    return Array.isArray(pendingOrders) ? pendingOrders : []
+    const order = await apiRequest('/api/orders/latest', { cache: 'no-store' })
+    if (!order?.orderNumber || order.orderNumber === state.orderNumber || !Array.isArray(order.items)) return
+    state.picks = order.items.map((item) => ({ ...item, key: String(item.dishId) }))
+    state.orderNumber = order.orderNumber
+    state.confirmed = true
+    state.confirmedCount = state.picks.length
+    render()
+    if (notify) showToast('已同步最新菜单')
   } catch {
-    return []
+    if (notify) showToast('菜单同步失败，请检查网络后重试')
   }
-}
-
-function savePendingOrders(orders) {
-  localStorage.setItem(pendingOrdersKey, JSON.stringify(orders))
-}
-
-async function syncPendingOrders() {
-  const pendingOrders = getPendingOrders()
-  if (!pendingOrders.length) return
-  const remainingOrders = []
-  for (const order of pendingOrders) {
-    try {
-      await apiRequest('/api/orders', { method: 'POST', body: JSON.stringify(order) })
-    } catch {
-      remainingOrders.push(order)
-    }
-  }
-  savePendingOrders(remainingOrders)
-  if (remainingOrders.length < pendingOrders.length) showToast('离线订单已同步')
 }
 
 const icons = {
@@ -104,8 +89,9 @@ const icons = {
   upload: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v5h14v-5"/></svg>',
 }
 
-function persist() {
-  localStorage.setItem('hewei-order-state', JSON.stringify({ picks: state.picks, confirmed: state.confirmed, customDishes: dishes.filter((dish) => dish.custom) }))
+function markMenuAsDraft() {
+  state.confirmed = false
+  state.orderNumber = ''
 }
 
 function pickCount() { return state.picks.length }
@@ -119,16 +105,23 @@ function imageMarkup(dish, large = false) {
 function menuView() {
   const categories = ['全部', ...new Set(dishes.map((dish) => dish.category))]
   const filtered = dishes.filter((dish) => (state.category === '全部' || dish.category === state.category) && (`${dish.name}${dish.desc}`.includes(state.search)))
+  const dishGrid = dishesStatus === 'loading'
+    ? '<div class="empty" role="status"><b>正在加载菜单</b><span>正在从数据库读取菜品</span></div>'
+    : dishesStatus === 'error'
+      ? '<div class="empty" role="alert"><b>菜单加载失败</b><span>无法连接数据库服务，请检查网络后重试</span><button class="secondary-button" data-action="retry-dishes">重新加载</button></div>'
+      : filtered.length
+        ? filtered.map(dishCard).join('')
+        : `<div class="empty"><b>${dishes.length ? '没有找到相关菜品' : '数据库中暂无菜品'}</b><span>${dishes.length ? '换个关键词或分类试试' : '请使用新增菜品录入菜单'}</span></div>`
   return `
     <header class="app-header">
-      <div><p class="eyebrow">欢迎光临</p><h1>禾味小馆</h1><p class="status"><span></span> 营业中 · 约 20 分钟出餐</p></div>
+      <div><p class="eyebrow">欢迎光临</p><h1>乐梵小灶</h1><p class="status"><span></span> 营业中 · 约 20 分钟出餐</p></div>
     </header>
     <main class="menu-layout">
       <section class="menu-panel" aria-labelledby="menu-heading">
         <div class="search-wrap">${icons.search}<label class="sr-only" for="dish-search">搜索菜品</label><input id="dish-search" type="search" placeholder="搜索想吃的菜" value="${escapeHtml(state.search)}" autocomplete="off"></div>
         <nav class="categories" aria-label="菜品分类">${categories.map((category) => `<button class="category ${category === state.category ? 'active' : ''}" data-category="${escapeAttr(category)}" aria-pressed="${category === state.category}">${escapeHtml(category)}</button>`).join('')}</nav>
         <div class="section-title"><div><p class="eyebrow">今日菜单</p><h2 id="menu-heading">${state.category === '全部' ? '人气菜品' : escapeHtml(state.category)}</h2></div><div class="section-actions"><span>${filtered.length} 道菜</span><button data-action="new-dish">${icons.plus} 新增菜品</button></div></div>
-        <div class="dish-grid">${filtered.length ? filtered.map(dishCard).join('') : '<div class="empty"><b>没有找到相关菜品</b><span>换个关键词或分类试试</span></div>'}</div>
+        <div class="dish-grid">${dishGrid}</div>
       </section>
       <aside class="desktop-cart" aria-label="已点菜单">${pickedContent(true)}</aside>
     </main>
@@ -173,7 +166,7 @@ function dishFormView() {
   const categoryOptions = [...new Set(dishes.map((dish) => dish.category))]
   return `<main class="subpage form-page"><header class="subpage-header"><button class="icon-button" data-action="close-form" aria-label="${editing ? '返回菜品详情' : '返回菜单'}">${icons.back}</button><h1>${editing ? '编辑菜品' : '新增菜品'}</h1><span></span></header>
     <form id="dish-form" class="dish-form" data-mode="${editing ? 'edit' : 'create'}">
-      <div class="form-intro"><p class="eyebrow">菜单管理</p><h2>${editing ? '更新菜品信息' : '录入一道新菜'}</h2><p>${editing ? '保存后将同步更新数据库和当前菜单。' : '保存后会立即显示在点菜菜单中，并保存在当前设备。'}</p></div>
+      <div class="form-intro"><p class="eyebrow">菜单管理</p><h2>${editing ? '更新菜品信息' : '录入一道新菜'}</h2><p>保存成功后将写入数据库，并同步更新所有设备的菜单。</p></div>
       <label for="dish-form-name">菜品名称 <em>必填</em></label><input id="dish-form-name" name="name" maxlength="20" required placeholder="例如：蒜蓉粉丝虾" value="${escapeAttr(dish?.name || '')}" autofocus>
       <label for="dish-form-category">菜品分类 <em>必填</em></label><input id="dish-form-category" name="category" list="category-list" maxlength="10" required placeholder="选择或输入分类" value="${escapeAttr(dish?.category || '')}"><datalist id="category-list">${categoryOptions.map((category) => `<option value="${escapeAttr(category)}"></option>`).join('')}</datalist>
       <label for="dish-form-desc">菜品描述 <em>必填</em></label><textarea id="dish-form-desc" name="desc" maxlength="60" required placeholder="介绍食材、口味或特色">${escapeHtml(dish?.desc || '')}</textarea>
@@ -209,27 +202,27 @@ function addDish(dish, option = dish.options[0], note = '') {
   const index = state.picks.findIndex((pick) => pick.dishId === dish.id)
   if (index >= 0) state.picks[index] = item
   else state.picks.push(item)
-  persist()
+  markMenuAsDraft()
 }
 
 document.addEventListener('click', async (event) => {
   const button = event.target.closest('button'); if (!button) return
   if (button.dataset.category) { state.category = button.dataset.category; render(); return }
   const action = button.dataset.action
+  if (action === 'retry-dishes') { await loadDishes(); return }
   if (action === 'edit-dish') { state.editingDish = state.selectedDish; state.view = 'dishForm'; render(); return }
   if (action === 'delete-dish') {
     const dish = state.selectedDish
     if (!window.confirm(`确定删除「${dish.name}」吗？此操作无法撤销。`)) return
     button.disabled = true
     try {
-      if (!dish.localOnly) await apiRequest(`/api/dishes/${dish.id}`, { method: 'DELETE' })
+      await apiRequest(`/api/dishes/${dish.id}`, { method: 'DELETE' })
       dishes = dishes.filter((item) => item.id !== dish.id)
       state.picks = state.picks.filter((item) => item.dishId !== dish.id)
       state.selectedDish = null
       state.editingDish = null
       state.category = dishes.some((item) => item.category === state.category) ? state.category : '全部'
       state.view = 'menu'
-      persist()
       render()
       showToast(`已删除「${dish.name}」`)
     } catch {
@@ -243,30 +236,30 @@ document.addEventListener('click', async (event) => {
     if (button.classList.contains('add-button')) { addDish(dish); showToast(`已添加「${dish.name}」`); render() } else openDish(button.dataset.dish)
     return
   }
-  if (action === 'remove-pick') { state.picks.splice(Number(button.dataset.index), 1); persist(); render(); return }
+  if (action === 'remove-pick') { state.picks.splice(Number(button.dataset.index), 1); markMenuAsDraft(); render(); return }
   if (action === 'close' || action === 'menu') { state.view = 'menu'; render() }
   if (action === 'close-form') { state.view = state.editingDish ? 'detail' : 'menu'; state.editingDish = null; render() }
   if (action === 'picks') { state.view = 'picks'; render() }
-  if (action === 'orders') { state.view = 'orders'; render() }
+  if (action === 'orders') { await loadLatestOrder(); state.view = 'orders'; render() }
   if (action === 'new-dish') { state.editingDish = null; state.view = 'dishForm'; render() }
-  if (action === 'clear' && window.confirm('确定清空全部已点菜品吗？')) { state.picks = []; persist(); render() }
+  if (action === 'clear' && window.confirm('确定清空全部已点菜品吗？')) { state.picks = []; markMenuAsDraft(); render() }
   if (action === 'confirm-add') { const option = document.querySelector('input[name="option"]:checked')?.value || state.selectedDish.options[0]; const note = document.querySelector('#dish-note').value.trim(); addDish(state.selectedDish, option, note); state.view = 'menu'; render(); showToast('已经点好这道菜啦') }
   if (action === 'confirm-menu') {
     if (!state.picks.length) return
-    state.confirmedCount = pickCount()
-    state.confirmed = true
-    state.orderNumber = `ORD${Date.now()}`
-    persist()
-    const order = { orderNumber: state.orderNumber, items: state.picks }
+    const order = { orderNumber: `ORD${Date.now()}`, items: state.picks }
+    button.disabled = true
     try {
       await apiRequest('/api/orders', {
         method: 'POST',
         body: JSON.stringify(order),
       })
+      state.confirmedCount = pickCount()
+      state.confirmed = true
+      state.orderNumber = order.orderNumber
     } catch {
-      const pendingOrders = getPendingOrders().filter((item) => item.orderNumber !== order.orderNumber)
-      savePendingOrders([...pendingOrders, order])
-      showToast('订单已暂存，联网后自动同步')
+      button.disabled = false
+      showToast('确认失败，数据未保存，请检查网络后重试')
+      return
     }
     state.view = 'success'
     render()
@@ -300,15 +293,11 @@ document.addEventListener('submit', async (event) => {
     options: uniqueOptions.length ? uniqueOptions : ['标准份'],
   }
   if (editingDish) {
-    if (editingDish.localOnly) {
-      dish = { ...editingDish, ...dish }
-    } else {
-      try {
-        dish = await apiRequest(`/api/dishes/${editingDish.id}`, { method: 'PUT', body: JSON.stringify(dish) })
-      } catch {
-        showToast('修改失败，请检查网络后重试')
-        return
-      }
+    try {
+      dish = await apiRequest(`/api/dishes/${editingDish.id}`, { method: 'PUT', body: JSON.stringify(dish) })
+    } catch {
+      showToast('修改失败，请检查网络后重试')
+      return
     }
     dishes = dishes.map((item) => item.id === dish.id ? dish : item)
     state.picks = state.picks.map((item) => item.dishId === dish.id ? { ...item, name: dish.name, option: dish.options.includes(item.option) ? item.option : dish.options[0] } : item)
@@ -318,8 +307,8 @@ document.addEventListener('submit', async (event) => {
     try {
       dish = await apiRequest('/api/dishes', { method: 'POST', body: JSON.stringify(dish) })
     } catch {
-      dish = { ...dish, id: Date.now(), custom: true, localOnly: true }
-      showToast('菜品暂时只保存在当前设备')
+      showToast('新增失败，数据未保存，请检查网络后重试')
+      return
     }
     dishes.push(dish)
   }
@@ -327,7 +316,6 @@ document.addEventListener('submit', async (event) => {
   state.search = ''
   state.view = 'menu'
   state.editingDish = null
-  persist()
   render()
   showToast(`${editingDish ? '已更新' : '已新增'}「${dish.name}」`)
 })
@@ -363,5 +351,17 @@ document.addEventListener('change', (event) => {
 registerSW({ onOfflineReady: () => showToast('应用已可离线使用'), onNeedRefresh: () => showToast('发现新版本，将自动更新') })
 render()
 loadDishes()
-syncPendingOrders()
-window.addEventListener('online', syncPendingOrders)
+loadLatestOrder()
+window.setInterval(() => {
+  if (!document.hidden) loadLatestOrder({ notify: true })
+}, orderRefreshInterval)
+window.addEventListener('online', () => {
+  loadDishes()
+  loadLatestOrder({ notify: true })
+})
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) {
+    loadDishes()
+    loadLatestOrder({ notify: true })
+  }
+})

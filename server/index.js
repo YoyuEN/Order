@@ -6,11 +6,12 @@ import { mkdir } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import multer from 'multer'
 import { z } from 'zod'
-import { createDish, createOrder, deleteDish, getDish, initializeDatabase, listDishes, pool, updateDish } from './db.js'
+import { createDish, createOrder, deleteDish, getDish, getLatestOrder, initializeDatabase, listDishes, pool, updateDish } from './db.js'
 
 const app = express()
 const port = Number(process.env.PORT || 3001)
 const allowedOrigins = new Set((process.env.ALLOWED_ORIGINS || 'https://localhost,http://localhost').split(',').map((origin) => origin.trim()).filter(Boolean))
+const loopbackOriginPattern = /^https?:\/\/(?:localhost|127\.0\.0\.1)(?::\d+)?$/
 const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const uploadsDirectory = path.join(projectRoot, 'uploads', 'dishes')
 const imageExtensions = new Map([
@@ -42,7 +43,7 @@ const upload = multer({
 app.disable('x-powered-by')
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || allowedOrigins.has(origin)) callback(null, true)
+    if (!origin || allowedOrigins.has(origin) || loopbackOriginPattern.test(origin)) callback(null, true)
     else {
       const error = new Error('Origin not allowed')
       error.status = 403
@@ -148,6 +149,20 @@ app.delete('/api/dishes/:id', async (request, response, next) => {
       return
     }
     response.status(204).end()
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.get('/api/orders/latest', async (_request, response, next) => {
+  try {
+    const order = await getLatestOrder()
+    if (!order) {
+      response.status(204).end()
+      return
+    }
+    response.setHeader('Cache-Control', 'no-store')
+    response.json(order)
   } catch (error) {
     next(error)
   }
