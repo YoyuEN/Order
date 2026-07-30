@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@capacitor/android": "^6.2.1",
+    "@capacitor/app": "^6.0.0",
     "@capacitor/core": "^6.2.1",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",

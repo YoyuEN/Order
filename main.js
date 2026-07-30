@@ -1,5 +1,6 @@
 import './style.css'
 import { registerSW } from 'virtual:pwa-register'
+import { App } from '@capacitor/app'
 
 let dishes = []
 let dishesStatus = 'loading'
@@ -10,6 +11,42 @@ const state = {
 
 const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
 const orderRefreshInterval = 10000
+const historyKey = 'order-app'
+
+function navigationState(scrollY = 0) {
+  return {
+    app: historyKey,
+    view: state.view,
+    selectedDishId: state.selectedDish?.id || null,
+    editingDishId: state.editingDish?.id || null,
+    scrollY,
+  }
+}
+
+function restoreNavigationState(entry) {
+  state.view = entry.view || 'menu'
+  state.selectedDish = entry.selectedDishId ? dishes.find((dish) => dish.id === entry.selectedDishId) || state.selectedDish : null
+  state.editingDish = entry.editingDishId ? dishes.find((dish) => dish.id === entry.editingDishId) || state.editingDish : null
+}
+
+function restoreScroll(scrollY = 0) {
+  window.requestAnimationFrame(() => window.scrollTo({ top: scrollY, left: 0, behavior: 'instant' }))
+}
+
+function navigate(view, { replace = false } = {}) {
+  window.history.replaceState(navigationState(window.scrollY), '')
+  state.view = view
+  const entry = navigationState(0)
+  window.history[replace ? 'replaceState' : 'pushState'](entry, '')
+  render()
+  restoreScroll(0)
+}
+
+function goBack() {
+  if (state.view === 'menu') return false
+  window.history.back()
+  return true
+}
 
 async function apiRequest(path, options = {}) {
   const controller = new AbortController()
@@ -183,8 +220,10 @@ function successView() {
 }
 
 function render() {
+  const categoryScrollLeft = document.querySelector('.categories')?.scrollLeft
   const views = { menu: menuView, detail: detailView, picks: pickedView, orders: ordersView, success: successView, dishForm: dishFormView }
   document.querySelector('#app').innerHTML = views[state.view]()
+  if (state.view === 'menu' && categoryScrollLeft !== undefined) document.querySelector('.categories').scrollLeft = categoryScrollLeft
   if (state.view === 'detail') document.querySelector('.floating-back')?.focus()
 }
 
@@ -194,7 +233,7 @@ function showToast(message) {
 }
 
 function openDish(id) {
-  state.selectedDish = dishes.find((dish) => dish.id === Number(id)); const existing = state.picks.find((item) => item.dishId === state.selectedDish.id); state.selectedOption = existing?.option || state.selectedDish.options[0]; state.note = existing?.note || ''; state.view = 'detail'; render()
+  state.selectedDish = dishes.find((dish) => dish.id === Number(id)); const existing = state.picks.find((item) => item.dishId === state.selectedDish.id); state.selectedOption = existing?.option || state.selectedDish.options[0]; state.note = existing?.note || ''; navigate('detail')
 }
 
 function addDish(dish, option = dish.options[0], note = '') {
@@ -210,7 +249,7 @@ document.addEventListener('click', async (event) => {
   if (button.dataset.category) { state.category = button.dataset.category; render(); return }
   const action = button.dataset.action
   if (action === 'retry-dishes') { await loadDishes(); return }
-  if (action === 'edit-dish') { state.editingDish = state.selectedDish; state.view = 'dishForm'; render(); return }
+  if (action === 'edit-dish') { state.editingDish = state.selectedDish; navigate('dishForm'); return }
   if (action === 'delete-dish') {
     const dish = state.selectedDish
     if (!window.confirm(`确定删除「${dish.name}」吗？此操作无法撤销。`)) return
@@ -222,8 +261,7 @@ document.addEventListener('click', async (event) => {
       state.selectedDish = null
       state.editingDish = null
       state.category = dishes.some((item) => item.category === state.category) ? state.category : '全部'
-      state.view = 'menu'
-      render()
+      if (!goBack()) navigate('menu', { replace: true })
       showToast(`已删除「${dish.name}」`)
     } catch {
       button.disabled = false
@@ -237,13 +275,14 @@ document.addEventListener('click', async (event) => {
     return
   }
   if (action === 'remove-pick') { state.picks.splice(Number(button.dataset.index), 1); markMenuAsDraft(); render(); return }
-  if (action === 'close' || action === 'menu') { state.view = 'menu'; render() }
-  if (action === 'close-form') { state.view = state.editingDish ? 'detail' : 'menu'; state.editingDish = null; render() }
-  if (action === 'picks') { state.view = 'picks'; render() }
-  if (action === 'orders') { await loadLatestOrder(); state.view = 'orders'; render() }
-  if (action === 'new-dish') { state.editingDish = null; state.view = 'dishForm'; render() }
+  if (action === 'close') { goBack() }
+  if (action === 'menu') { navigate('menu', { replace: state.view === 'success' }) }
+  if (action === 'close-form') { state.editingDish = null; goBack() }
+  if (action === 'picks') { navigate('picks') }
+  if (action === 'orders') { await loadLatestOrder(); navigate('orders') }
+  if (action === 'new-dish') { state.editingDish = null; navigate('dishForm') }
   if (action === 'clear' && window.confirm('确定清空全部已点菜品吗？')) { state.picks = []; markMenuAsDraft(); render() }
-  if (action === 'confirm-add') { const option = document.querySelector('input[name="option"]:checked')?.value || state.selectedDish.options[0]; const note = document.querySelector('#dish-note').value.trim(); addDish(state.selectedDish, option, note); state.view = 'menu'; render(); showToast('已经点好这道菜啦') }
+  if (action === 'confirm-add') { const option = document.querySelector('input[name="option"]:checked')?.value || state.selectedDish.options[0]; const note = document.querySelector('#dish-note').value.trim(); addDish(state.selectedDish, option, note); goBack(); showToast('已经点好这道菜啦') }
   if (action === 'confirm-menu') {
     if (!state.picks.length) return
     const order = { orderNumber: `ORD${Date.now()}`, items: state.picks }
@@ -261,8 +300,7 @@ document.addEventListener('click', async (event) => {
       showToast('确认失败，数据未保存，请检查网络后重试')
       return
     }
-    state.view = 'success'
-    render()
+    navigate('success')
   }
 })
 
@@ -314,9 +352,8 @@ document.addEventListener('submit', async (event) => {
   }
   state.category = dish.category
   state.search = ''
-  state.view = 'menu'
   state.editingDish = null
-  render()
+  navigate('menu', { replace: true })
   showToast(`${editingDish ? '已更新' : '已新增'}「${dish.name}」`)
 })
 
@@ -349,6 +386,18 @@ document.addEventListener('change', (event) => {
 })
 
 registerSW({ onOfflineReady: () => showToast('应用已可离线使用'), onNeedRefresh: () => showToast('发现新版本，将自动更新') })
+window.history.replaceState(navigationState(window.scrollY), '')
+window.addEventListener('popstate', (event) => {
+  const entry = event.state?.app === historyKey ? event.state : navigationState(0)
+  restoreNavigationState(entry)
+  render()
+  restoreScroll(entry.scrollY)
+})
+App.addListener('backButton', ({ canGoBack }) => {
+  if (goBack()) return
+  if (canGoBack) window.history.back()
+  else App.exitApp()
+})
 render()
 loadDishes()
 loadLatestOrder({ force: true })
