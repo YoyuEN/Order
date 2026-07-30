@@ -63,8 +63,8 @@ async function loadDishes() {
   }
 }
 
-async function loadLatestOrder({ notify = false } = {}) {
-  if (state.picks.length && !state.confirmed) return
+async function loadLatestOrder({ notify = false, force = false } = {}) {
+  if (!force && !state.confirmed) return
   try {
     const order = await apiRequest('/api/orders/latest', { cache: 'no-store' })
     if (!order?.orderNumber || order.orderNumber === state.orderNumber || !Array.isArray(order.items)) return
@@ -351,7 +351,7 @@ document.addEventListener('change', (event) => {
 registerSW({ onOfflineReady: () => showToast('应用已可离线使用'), onNeedRefresh: () => showToast('发现新版本，将自动更新') })
 render()
 loadDishes()
-loadLatestOrder()
+loadLatestOrder({ force: true })
 window.setInterval(() => {
   if (!document.hidden) loadLatestOrder({ notify: true })
 }, orderRefreshInterval)

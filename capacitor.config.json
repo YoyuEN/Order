@@ -1,6 +1,6 @@
 {
   "appId": "com.hewei.order",
-  "appName": "禾味点菜",
+  "appName": "乐梵小灶",
   "webDir": "dist",
   "server": {
     "androidScheme": "http",

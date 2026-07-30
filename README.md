@@ -8,12 +8,52 @@
 
 1. 安装依赖：`npm install`
 2. 将 `.env.example` 复制为 `.env.local`，填写 RDS 连接信息。不要提交该文件。
-3. 启动 API：`npm run dev:api`
-4. 在另一个终端启动前端：`npm run dev`
+3. 启动前后端（Vite + Express 同时运行）：`npm run dev`
+4. 仅后端 API：`npm run dev:api`
 5. 生成生产版本：`npm run build`
 6. 生产运行：`npm start`
 
-浏览器开发模式不会启用完整的 Service Worker 行为。请使用生产预览验证安装功能。在 Chrome/Edge 地址栏或应用菜单中选择“安装应用”。
+浏览器开发模式不会启用完整的 Service Worker 行为。请使用生产预览验证安装功能。在 Chrome/Edge 地址栏或应用菜单中选择"安装应用"。
+
+## 服务器部署
+
+后端 API 通过 PM2 部署在 `118.89.135.164` 的 `/opt/hewei-order` 目录。
+
+### 上传后端代码
+
+```bash
+# 将 server/ 目录上传到服务器（替换为实际 SSH 信息）
+scp -r server/* ubuntu@118.89.135.164:/opt/hewei-order/server/
+```
+
+### 登录服务器操作
+
+```bash
+ssh ubuntu@118.89.135.164
+
+# 进入项目目录
+cd /opt/hewei-order
+
+# 重新安装依赖（如果 package.json 有变化）
+npm install --production
+
+# 重启 API 服务
+pm2 restart hewei-api
+
+# 查看日志
+pm2 logs hewei-api
+
+# 查看服务状态
+pm2 status
+```
+
+### 变更说明
+
+| 改了什么 | 需要做什么 |
+|---------|-----------|
+| `server/` 后端代码 | 上传到服务器并 `pm2 restart hewei-api` |
+| 前端 HTML/CSS/JS | 运行 `npm run android:sync` 重新打包 APK |
+| `package.json` 依赖 | 服务器上也需执行 `npm install --production` |
 
 ## 打包 Android
 
@@ -26,6 +66,15 @@
 3. 运行 `npm run android:open`
 
 以后网页代码有变化时，仅需运行 `npm run android:sync`，然后在 Android Studio 中运行或生成 APK/AAB。
+
+**无 Android Studio 直接用命令行打包 APK：**
+
+```bash
+npm run android:sync
+cd android && .\gradlew.bat assembleDebug
+```
+
+APK 文件位于 `android/app/build/outputs/apk/debug/`。
 
 ## 数据说明
 
@@ -46,25 +95,3 @@
 
 
 后续我只负责修改前端界面、后端代码和业务逻辑，构建、测试、同步等命令由你自己执行。
-
-# 前端开发（Vite 热更新）
-npm run dev
-
-# 后端 API（Express + MySQL）
-npm run dev:api
-
-# 生产启动（同时提供 API 和前端静态文件）
-npm start
-
-# 运行测试
-npm test
-
-# 生产构建（Vite + PWA 生成 dist/）
-npm run build
-
-# 本地预览生产构建
-npm run preview
-
-# Android 打包
-npm run android:sync      # 构建并同步到 Android 工程
-npm run android:open      # 在 Android Studio 中打开
