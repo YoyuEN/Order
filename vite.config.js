@@ -14,7 +14,7 @@ export default defineConfig({
       includeAssets: ['icons/icon.svg'],
       manifest: {
         name: '乐梵小灶',
-        short_name: '禾味乐梵小灶点菜',
+        short_name: '乐梵小灶',
         description: '手机扫码点菜与本地订单管理',
         theme_color: '#d94b32',
         background_color: '#f7f4ee',

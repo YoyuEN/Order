@@ -203,7 +203,7 @@ app.use((error, _request, response, _next) => {
 
 try {
   await initializeDatabase()
-  app.listen(port, () => console.log(`禾味点菜服务已启动：http://localhost:${port}`))
+  app.listen(port, () => console.log(`服务已启动：http://localhost:${port}`))
 } catch (error) {
   console.error('数据库初始化失败：', error.message)
   process.exitCode = 1
