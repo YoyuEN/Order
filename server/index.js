@@ -6,7 +6,7 @@ import { mkdir } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import multer from 'multer'
 import { z } from 'zod'
-import { createDish, createOrder, deleteDish, getDish, getLatestOrder, initializeDatabase, listDishes, pool, updateDish } from './db.js'
+import { clearCurrentOrder, createDish, createOrder, deleteDish, getDish, getLatestOrder, initializeDatabase, listDishes, pool, updateDish } from './db.js'
 
 const app = express()
 const port = Number(process.env.PORT || 3001)
@@ -163,6 +163,15 @@ app.get('/api/orders/latest', async (_request, response, next) => {
     }
     response.setHeader('Cache-Control', 'no-store')
     response.json(order)
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.delete('/api/orders/current', async (_request, response, next) => {
+  try {
+    await clearCurrentOrder()
+    response.status(204).end()
   } catch (error) {
     next(error)
   }

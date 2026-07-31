@@ -229,6 +229,7 @@ export async function createOrder(order) {
   const connection = await pool.getConnection()
   try {
     await connection.beginTransaction()
+    await connection.execute("UPDATE orders SET status = 'cancelled' WHERE status = 'confirmed'")
     const [result] = await connection.execute(
       `INSERT INTO orders (order_number, table_number, guest_count, status)
        VALUES (?, ?, ?, 'confirmed')`,
@@ -256,6 +257,11 @@ export async function createOrder(order) {
   } finally {
     connection.release()
   }
+}
+
+export async function clearCurrentOrder() {
+  const [result] = await pool.execute("UPDATE orders SET status = 'cancelled' WHERE status = 'confirmed'")
+  return result.affectedRows > 0
 }
 
 export async function getLatestOrder() {

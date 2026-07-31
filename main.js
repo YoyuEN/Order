@@ -108,6 +108,17 @@ async function loadLatestOrder({ notify = false, force = false } = {}) {
   if (!force && !state.confirmed) return
   try {
     const order = await apiRequest('/api/orders/latest', { cache: 'no-store' })
+    if (!order) {
+      if (state.confirmed) {
+        state.picks = []
+        state.orderNumber = ''
+        state.confirmed = false
+        state.confirmedCount = 0
+        render()
+        if (notify) showToast('已同步清空菜单')
+      }
+      return
+    }
     if (!order?.orderNumber || order.orderNumber === state.orderNumber || !Array.isArray(order.items)) return
     state.picks = order.items.map((item) => ({ ...item, key: String(item.dishId) }))
     state.orderNumber = order.orderNumber
@@ -133,7 +144,6 @@ const icons = {
 
 function markMenuAsDraft() {
   state.confirmed = false
-  state.orderNumber = ''
 }
 
 function pickCount() { return state.picks.length }
@@ -302,7 +312,22 @@ document.addEventListener('click', async (event) => {
   if (action === 'picks') { navigate('picks') }
   if (action === 'orders') { await loadLatestOrder(); navigate('orders') }
   if (action === 'new-dish') { state.editingDish = null; navigate('dishForm') }
-  if (action === 'clear' && window.confirm('确定清空全部已点菜品吗？')) { state.picks = []; markMenuAsDraft(); render() }
+  if (action === 'clear' && window.confirm('确定清空全部已点菜品吗？')) {
+    button.disabled = true
+    try {
+      await apiRequest('/api/orders/current', { method: 'DELETE' })
+      state.picks = []
+      state.orderNumber = ''
+      state.confirmed = false
+      state.confirmedCount = 0
+      render()
+      showToast('已清空菜单')
+    } catch {
+      button.disabled = false
+      showToast('清空失败，请检查网络后重试')
+    }
+    return
+  }
   if (action === 'confirm-add') { const option = document.querySelector('input[name="option"]:checked')?.value || state.selectedDish.options[0]; const note = document.querySelector('#dish-note').value.trim(); addDish(state.selectedDish, option, note); goBack(); showToast('已经点好这道菜啦') }
   if (action === 'confirm-menu') {
     if (!state.picks.length) return
