@@ -6,7 +6,7 @@ let dishes = []
 let dishesStatus = 'loading'
 const state = {
   category: '全部', search: '', picks: [],
-  selectedDish: null, editingDish: null, selectedOption: '', note: '', view: 'menu', orderNumber: '', confirmed: false, confirmedCount: 0,
+  selectedDish: null, editingDish: null, selectedOption: '', note: '', view: 'menu', orderNumber: '', confirmed: false, confirmedCount: 0, imagePreviewOpen: false,
 }
 
 const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
@@ -43,6 +43,10 @@ function navigate(view, { replace = false } = {}) {
 }
 
 function goBack() {
+  if (state.imagePreviewOpen) {
+    closeImagePreview()
+    return true
+  }
   if (state.view === 'menu') return false
   window.history.back()
   return true
@@ -124,6 +128,7 @@ const icons = {
   receipt: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2V3Zm3 5h6m-6 4h6"/></svg>',
   plus: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
   upload: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v5h14v-5"/></svg>',
+  close: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>',
 }
 
 function markMenuAsDraft() {
@@ -180,7 +185,19 @@ function bottomBar() {
 
 function detailView() {
   const dish = state.selectedDish
-  return `<main class="detail-view"><button class="icon-button floating-back" data-action="close" aria-label="返回菜单">${icons.back}</button>${imageMarkup(dish, true)}<section class="detail-sheet"><p class="eyebrow">${escapeHtml(dish.category)}</p><h1>${escapeHtml(dish.name)}</h1><p class="detail-desc">${escapeHtml(dish.desc)}</p><div class="detail-meta"><strong>今天就吃这个</strong></div><div class="management-actions" aria-label="菜品管理"><button class="secondary-button" data-action="edit-dish">编辑菜品</button><button class="danger-button" data-action="delete-dish">删除菜品</button></div><fieldset><legend>选择规格 <em>必选</em></legend><div class="option-list">${dish.options.map((option, index) => `<label><input type="radio" name="option" value="${escapeAttr(option)}" ${state.selectedOption === option || (!state.selectedOption && index === 0) ? 'checked' : ''}><span>${escapeHtml(option)}</span></label>`).join('')}</div></fieldset><label class="note-label" for="dish-note">口味备注 <span>选填</span></label><textarea id="dish-note" maxlength="50" placeholder="例如：不要香菜、少盐">${escapeHtml(state.note)}</textarea><button class="primary-button" data-action="confirm-add">${state.picks.some((item) => item.dishId === dish.id) ? '更新选择' : '就点这道菜'}</button></section></main>`
+  return `<main class="detail-view"><button class="icon-button floating-back" data-action="close" aria-label="返回菜单">${icons.back}</button><button class="dish-image-preview-button" data-action="preview-image" aria-label="放大预览${escapeAttr(dish.name)}图片">${imageMarkup(dish, true)}<span class="preview-hint" aria-hidden="true">点击查看大图</span></button><section class="detail-sheet"><p class="eyebrow">${escapeHtml(dish.category)}</p><h1>${escapeHtml(dish.name)}</h1><p class="detail-desc">${escapeHtml(dish.desc)}</p><div class="detail-meta"><strong>今天就吃这个</strong></div><div class="management-actions" aria-label="菜品管理"><button class="secondary-button" data-action="edit-dish">编辑菜品</button><button class="danger-button" data-action="delete-dish">删除菜品</button></div><fieldset><legend>选择规格 <em>必选</em></legend><div class="option-list">${dish.options.map((option, index) => `<label><input type="radio" name="option" value="${escapeAttr(option)}" ${state.selectedOption === option || (!state.selectedOption && index === 0) ? 'checked' : ''}><span>${escapeHtml(option)}</span></label>`).join('')}</div></fieldset><label class="note-label" for="dish-note">口味备注 <span>选填</span></label><textarea id="dish-note" maxlength="50" placeholder="例如：不要香菜、少盐">${escapeHtml(state.note)}</textarea><button class="primary-button" data-action="confirm-add">${state.picks.some((item) => item.dishId === dish.id) ? '更新选择' : '就点这道菜'}</button></section></main>`
+}
+
+function imagePreview() {
+  if (!state.imagePreviewOpen || !state.selectedDish) return ''
+  const dish = state.selectedDish
+  return `<div class="image-lightbox" role="dialog" aria-modal="true" aria-label="${escapeAttr(dish.name)}图片预览" data-action="close-image-preview"><button class="image-lightbox-close" data-action="close-image-preview" aria-label="关闭图片预览">${icons.close}</button><img src="${escapeAttr(dish.image)}" alt="${escapeAttr(dish.name)}的大图" data-lightbox-image></div>`
+}
+
+function closeImagePreview() {
+  state.imagePreviewOpen = false
+  render()
+  document.querySelector('[data-action="preview-image"]')?.focus()
 }
 
 function pickedContent(desktop = false) {
@@ -222,9 +239,11 @@ function successView() {
 function render() {
   const categoryScrollLeft = document.querySelector('.categories')?.scrollLeft
   const views = { menu: menuView, detail: detailView, picks: pickedView, orders: ordersView, success: successView, dishForm: dishFormView }
-  document.querySelector('#app').innerHTML = views[state.view]()
+  document.querySelector('#app').innerHTML = `${views[state.view]()}${imagePreview()}`
+  document.body.classList.toggle('image-preview-open', state.imagePreviewOpen)
   if (state.view === 'menu' && categoryScrollLeft !== undefined) document.querySelector('.categories').scrollLeft = categoryScrollLeft
-  if (state.view === 'detail') document.querySelector('.floating-back')?.focus()
+  if (state.imagePreviewOpen) document.querySelector('.image-lightbox-close')?.focus()
+  else if (state.view === 'detail') document.querySelector('.floating-back')?.focus()
 }
 
 function showToast(message) {
@@ -248,6 +267,8 @@ document.addEventListener('click', async (event) => {
   const button = event.target.closest('button'); if (!button) return
   if (button.dataset.category) { state.category = button.dataset.category; render(); return }
   const action = button.dataset.action
+  if (action === 'preview-image') { state.imagePreviewOpen = true; render(); return }
+  if (action === 'close-image-preview') { closeImagePreview(); return }
   if (action === 'retry-dishes') { await loadDishes(); return }
   if (action === 'edit-dish') { state.editingDish = state.selectedDish; navigate('dishForm'); return }
   if (action === 'delete-dish') {
@@ -302,6 +323,14 @@ document.addEventListener('click', async (event) => {
     }
     navigate('success')
   }
+})
+
+document.addEventListener('click', (event) => {
+  if (event.target.classList.contains('image-lightbox')) closeImagePreview()
+})
+
+document.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape' && state.imagePreviewOpen) closeImagePreview()
 })
 
 document.addEventListener('submit', async (event) => {
