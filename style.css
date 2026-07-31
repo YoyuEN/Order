@@ -241,10 +241,6 @@ svg {
   position: relative;
   min-width: 0;
   overflow: hidden;
-  background: var(--cream);
-  border: 1px solid var(--line);
-  border-radius: 15px;
-  box-shadow: 0 4px 16px rgba(66, 52, 39, .05);
 }
 
 .dish-open {
@@ -270,6 +266,7 @@ svg {
   height: 100%;
   object-fit: cover;
   transition: transform .35s ease;
+  border-radius: 6px;
 }
 
 .dish-open:hover img {

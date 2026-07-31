@@ -166,7 +166,7 @@ function menuView() {
         : `<div class="empty"><b>${dishes.length ? '没有找到相关菜品' : '数据库中暂无菜品'}</b><span>${dishes.length ? '换个关键词或分类试试' : '请使用新增菜品录入菜单'}</span></div>`
   return `
     <header class="app-header">
-      <div><p class="eyebrow">欢迎光临</p><h1>乐梵小灶</h1><p class="status"><span></span> 营业中 · 约 20 分钟出餐</p></div>
+      <div><h1>乐梵小灶</h1></div>
     </header>
     <main class="menu-layout">
       <section class="menu-panel" aria-labelledby="menu-heading">
