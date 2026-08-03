@@ -1388,9 +1388,15 @@ textarea {
   outline: none;
 }
 
-.custom-category-field input:focus,
-.category-select-wrap select:focus {
+.custom-category-field input:focus {
   border-color: var(--red);
+}
+
+.category-select-wrap select:focus,
+.category-select-wrap select:focus-visible {
+  border-color: #d8cfc2;
+  outline: none;
+  box-shadow: none;
 }
 
 .options-section {
