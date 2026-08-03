@@ -335,6 +335,40 @@ function updateOptionState() {
   rows.forEach((row, index) => row.querySelector('.option-remove')?.setAttribute('aria-label', `删除规格 ${index + 1}`))
 }
 
+function setCategoryDropdownOpen(open, { focusOption = false } = {}) {
+  const dropdown = document.querySelector('.category-select-wrap')
+  const trigger = document.querySelector('#dish-form-category')
+  const listbox = document.querySelector('#dish-category-options')
+  if (!dropdown || !trigger || !listbox) return
+  dropdown.classList.toggle('is-open', open)
+  trigger.setAttribute('aria-expanded', String(open))
+  listbox.setAttribute('aria-hidden', String(!open))
+  if (open && focusOption) {
+    const selected = listbox.querySelector('[aria-selected="true"]')
+    ;(selected || listbox.querySelector('[role="option"]'))?.focus()
+  }
+}
+
+function selectDishCategory(value, label) {
+  const input = document.querySelector('input[name="categoryPreset"]')
+  const trigger = document.querySelector('#dish-form-category')
+  const customField = document.querySelector('.custom-category-field')
+  const customInput = document.querySelector('#dish-form-custom-category')
+  if (!input || !trigger || !customField || !customInput) return
+  input.value = value
+  trigger.querySelector('[data-category-label]').textContent = label
+  trigger.classList.remove('is-placeholder')
+  document.querySelectorAll('#dish-category-options [role="option"]').forEach((option) => {
+    option.setAttribute('aria-selected', String(option.dataset.value === value))
+  })
+  const isCustom = value === '__custom__'
+  customField.hidden = !isCustom
+  customInput.required = isCustom
+  setCategoryDropdownOpen(false)
+  if (isCustom) customInput.focus()
+  else trigger.focus()
+}
+
 function stepRow(step = {}, key) {
   const normalizedStep = typeof step === 'string' ? { instruction: step, image: null } : step
   const idKey = key || Math.random().toString(36).slice(2, 8)
@@ -369,6 +403,7 @@ function dishFormView() {
   const ingredients = dish?.ingredients?.length ? dish.ingredients : [{}]
   const options = dish?.options?.length ? dish.options : ['标准份']
   const steps = dish?.steps?.length ? dish.steps : [{}]
+  const selectedCategory = dish?.category || ''
   return `<main class="subpage form-page"><header class="subpage-header"><button class="icon-button" data-action="close-form" aria-label="${editing ? '返回菜品详情' : '返回菜单'}">${icons.back}</button><h1>${editing ? '编辑菜品' : '新增菜品'}</h1><button class="icon-button form-save-button" type="submit" form="dish-form" aria-label="${editing ? '保存菜品修改' : '保存菜品'}">${icons.send}</button></header>
     <form id="dish-form" class="dish-form" data-mode="${editing ? 'edit' : 'create'}">
       <input id="dish-form-image" class="upload-input" name="imageFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif" aria-describedby="dish-image-status" aria-required="true">
@@ -381,13 +416,14 @@ function dishFormView() {
       <section class="category-section" aria-labelledby="category-heading">
         <div class="form-section-copy"><h2 id="category-heading">菜品分类</h2><p>选择分类后，菜品会自动归入首页对应栏目</p></div>
         <div class="category-select-wrap">
-          <label class="sr-only" for="dish-form-category">选择菜品分类</label>
-          <select id="dish-form-category" name="categoryPreset" required>
-            <option value="" ${dish?.category ? '' : 'selected'} disabled>请选择分类</option>
-            ${categoryOptions.map((category) => `<option value="${escapeAttr(category)}" ${dish?.category === category ? 'selected' : ''}>${escapeHtml(category)}</option>`).join('')}
-            <option value="__custom__">＋ 新增自定义分类</option>
-          </select>
-          ${icons.chevronDown}
+          <input type="hidden" name="categoryPreset" value="${escapeAttr(selectedCategory)}">
+          <button id="dish-form-category" class="category-select-trigger ${selectedCategory ? '' : 'is-placeholder'}" type="button" data-action="toggle-category-dropdown" aria-haspopup="listbox" aria-expanded="false" aria-controls="dish-category-options">
+            <span data-category-label>${selectedCategory ? escapeHtml(selectedCategory) : '请选择分类'}</span>${icons.chevronDown}
+          </button>
+          <div id="dish-category-options" class="category-select-options" role="listbox" aria-label="菜品分类" aria-hidden="true">
+            ${categoryOptions.map((category) => `<button type="button" role="option" data-action="select-category" data-value="${escapeAttr(category)}" aria-selected="${selectedCategory === category}">${escapeHtml(category)}</button>`).join('')}
+            <button class="category-option-custom" type="button" role="option" data-action="select-category" data-value="__custom__" aria-selected="false">＋ 新增自定义分类</button>
+          </div>
         </div>
         <div class="custom-category-field" hidden>
           <label for="dish-form-custom-category">自定义分类名称</label>
@@ -451,6 +487,15 @@ document.addEventListener('click', async (event) => {
   const button = event.target.closest('button'); if (!button) return
   if (button.dataset.category) { state.category = button.dataset.category; render(); return }
   const action = button.dataset.action
+  if (action === 'toggle-category-dropdown') {
+    const open = button.getAttribute('aria-expanded') !== 'true'
+    setCategoryDropdownOpen(open)
+    return
+  }
+  if (action === 'select-category') {
+    selectDishCategory(button.dataset.value, button.textContent.trim())
+    return
+  }
   if (action === 'preview-image') { state.imagePreviewOpen = true; render(); return }
   if (action === 'close-image-preview') { closeImagePreview(); return }
   if (action === 'toggle-more-menu') { state.moreMenuOpen = !state.moreMenuOpen; render(); return }
@@ -612,11 +657,38 @@ document.addEventListener('click', async (event) => {
 document.addEventListener('click', (event) => {
   if (event.target.classList.contains('image-lightbox')) closeImagePreview()
   if (event.target.closest('.modal-overlay') && !event.target.closest('.success-modal')) closeSuccessModal()
+  if (!event.target.closest('.category-select-wrap')) setCategoryDropdownOpen(false)
 })
 
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && state.imagePreviewOpen) closeImagePreview()
   if (event.key === 'Escape' && state.showSuccessModal) closeSuccessModal()
+  const trigger = event.target.closest('#dish-form-category')
+  const option = event.target.closest('#dish-category-options [role="option"]')
+  if (trigger && ['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)) {
+    event.preventDefault()
+    setCategoryDropdownOpen(true, { focusOption: true })
+    return
+  }
+  if (option) {
+    const options = [...option.parentElement.querySelectorAll('[role="option"]')]
+    const index = options.indexOf(option)
+    if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault()
+      options[(index + (event.key === 'ArrowDown' ? 1 : -1) + options.length) % options.length].focus()
+      return
+    }
+    if (event.key === 'Home' || event.key === 'End') {
+      event.preventDefault()
+      options[event.key === 'Home' ? 0 : options.length - 1].focus()
+      return
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      setCategoryDropdownOpen(false)
+      document.querySelector('#dish-form-category')?.focus()
+    }
+  }
 })
 
 document.addEventListener('submit', async (event) => {
@@ -725,15 +797,6 @@ document.addEventListener('input', (event) => {
 })
 
 document.addEventListener('change', (event) => {
-  if (event.target.id === 'dish-form-category') {
-    const customField = document.querySelector('.custom-category-field')
-    const customInput = document.querySelector('#dish-form-custom-category')
-    const isCustom = event.target.value === '__custom__'
-    customField.hidden = !isCustom
-    customInput.required = isCustom
-    if (isCustom) customInput.focus()
-    return
-  }
   if (event.target.classList.contains('step-image-input')) {
     const file = event.target.files[0]
     if (!file) return
