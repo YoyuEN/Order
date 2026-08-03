@@ -1492,7 +1492,7 @@ textarea {
 .step-row textarea {
   width: 100%;
   min-height: 72px;
-  padding: 8px 2px;
+  padding: 9px 8px;
   color: #4d4943;
   background: transparent;
   border: 0;
