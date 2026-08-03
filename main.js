@@ -133,7 +133,7 @@ async function uploadDishImage(file) {
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(), 15000)
   const body = new FormData()
-  body.append('image', file)
+  body.append('image', uploadFile)
   try {
     const response = await fetch(`${apiBaseUrl}/api/uploads/dish-image`, { method: 'POST', body, signal: controller.signal })
     if (!response.ok) {
@@ -266,7 +266,9 @@ function bottomBar() {
 
 function detailView() {
   const dish = state.selectedDish
-  return `<main class="detail-view"><button class="icon-button floating-back" data-action="close" aria-label="返回菜单">${icons.back}</button><button class="icon-button floating-more" data-action="toggle-more-menu" aria-label="更多操作" aria-expanded="${state.moreMenuOpen}">${icons.more}</button>${state.moreMenuOpen ? `<div class="more-menu-dropdown" role="menu" aria-label="菜品管理"><button class="more-menu-item" data-action="edit-dish" role="menuitem">${icons.edit}<span>编辑菜品</span></button><button class="more-menu-item more-menu-item--danger" data-action="delete-dish" role="menuitem">${icons.trash}<span>删除菜品</span></button></div>` : ''}${state.moreMenuOpen ? '<button class="more-menu-backdrop" data-action="close-more-menu" aria-label="关闭菜单"></button>' : ''}<button class="dish-image-preview-button" data-action="preview-image" aria-label="放大预览${escapeAttr(dish.name)}图片">${imageMarkup(dish, true)}<span class="preview-hint" aria-hidden="true">点击查看大图</span></button><section class="detail-sheet"><p class="eyebrow">${escapeHtml(dish.category)}</p><h1>${escapeHtml(dish.name)}</h1><p class="detail-desc">${escapeHtml(dish.desc)}</p><div class="detail-meta"><strong>今天就吃这个</strong></div><fieldset><legend>选择规格 <em>必选</em></legend><div class="option-list">${dish.options.map((option, index) => `<label><input type="radio" name="option" value="${escapeAttr(option)}" ${state.selectedOption === option || (!state.selectedOption && index === 0) ? 'checked' : ''}><span>${escapeHtml(option)}</span></label>`).join('')}</div></fieldset><label class="note-label" for="dish-note">口味备注 <span>选填</span></label><textarea id="dish-note" maxlength="50" placeholder="例如：不要香菜、少盐">${escapeHtml(state.note)}</textarea><button class="primary-button" data-action="confirm-add">${state.picks.some((item) => item.dishId === dish.id) ? '更新选择' : '就点这道菜'}</button></section></main>`
+  const steps = (dish.steps || []).map((step) => typeof step === 'string' ? { instruction: step, image: null } : step)
+  const recipe = steps.length ? `<section class="recipe-section" aria-labelledby="recipe-heading"><h2 id="recipe-heading">制作步骤</h2><ol class="recipe-steps">${steps.map((step) => `<li>${step.image ? `<img src="${escapeAttr(step.image)}" alt="" loading="lazy">` : ''}<div><b>${escapeHtml(step.instruction)}</b></div></li>`).join('')}</ol></section>` : ''
+  return `<main class="detail-view"><button class="icon-button floating-back" data-action="close" aria-label="返回菜单">${icons.back}</button><button class="icon-button floating-more" data-action="toggle-more-menu" aria-label="更多操作" aria-expanded="${state.moreMenuOpen}">${icons.more}</button>${state.moreMenuOpen ? `<div class="more-menu-dropdown" role="menu" aria-label="菜品管理"><button class="more-menu-item" data-action="edit-dish" role="menuitem">${icons.edit}<span>编辑菜品</span></button><button class="more-menu-item more-menu-item--danger" data-action="delete-dish" role="menuitem">${icons.trash}<span>删除菜品</span></button></div>` : ''}${state.moreMenuOpen ? '<button class="more-menu-backdrop" data-action="close-more-menu" aria-label="关闭菜单"></button>' : ''}<button class="dish-image-preview-button" data-action="preview-image" aria-label="放大预览${escapeAttr(dish.name)}图片">${imageMarkup(dish, true)}<span class="preview-hint" aria-hidden="true">点击查看大图</span></button><section class="detail-sheet"><p class="eyebrow">${escapeHtml(dish.category)}</p><h1>${escapeHtml(dish.name)}</h1><p class="detail-desc">${escapeHtml(dish.desc)}</p><div class="detail-meta"><strong>今天就吃这个</strong></div>${recipe}<fieldset><legend>选择规格 <em>必选</em></legend><div class="option-list">${dish.options.map((option, index) => `<label><input type="radio" name="option" value="${escapeAttr(option)}" ${state.selectedOption === option || (!state.selectedOption && index === 0) ? 'checked' : ''}><span>${escapeHtml(option)}</span></label>`).join('')}</div></fieldset><label class="note-label" for="dish-note">口味备注 <span>选填</span></label><textarea id="dish-note" maxlength="50" placeholder="例如：不要香菜、少盐">${escapeHtml(state.note)}</textarea><button class="primary-button" data-action="confirm-add">${state.picks.some((item) => item.dishId === dish.id) ? '更新选择' : '就点这道菜'}</button></section></main>`
 }
 
 function imagePreview() {
@@ -312,12 +314,36 @@ function ingredientRow(ingredient = {}, key) {
   </div>`
 }
 
+function stepRow(step = {}, key) {
+  const normalizedStep = typeof step === 'string' ? { instruction: step, image: null } : step
+  const idKey = key || Math.random().toString(36).slice(2, 8)
+  const hasImage = Boolean(normalizedStep.image)
+  return `<div class="step-row" data-step-row data-image="${escapeAttr(normalizedStep.image || '')}">
+    <div class="step-row-heading"><span data-step-number>步骤</span><button class="step-remove" type="button" data-action="remove-step" aria-label="删除这个制作步骤">${icons.trash}</button></div>
+    <label class="sr-only" for="step-instruction-${idKey}">步骤说明</label><textarea id="step-instruction-${idKey}" name="stepInstruction" maxlength="1000" required placeholder="填写这一步的做法（必填）">${escapeHtml(normalizedStep.instruction || '')}</textarea>
+    <input id="step-image-${idKey}" class="upload-input step-image-input" name="stepImage" type="file" accept="image/jpeg,image/png,image/webp,image/gif">
+    <label class="step-image-upload ${hasImage ? 'has-image' : ''}" for="step-image-${idKey}">
+      <span class="step-image-preview">${hasImage ? `<img src="${escapeAttr(normalizedStep.image)}" alt="当前步骤图片">` : `${icons.upload}<span>添加图片 <small>选填</small></span>`}</span>
+    </label>
+    ${hasImage ? '<button class="step-image-clear" type="button" data-action="clear-step-image">移除图片</button>' : ''}
+  </div>`
+}
+
+function updateStepNumbers() {
+  document.querySelectorAll('[data-step-row]').forEach((row, index) => {
+    const number = row.querySelector('[data-step-number]')
+    if (number) number.textContent = `步骤 ${index + 1}`
+    row.querySelector('.step-remove')?.setAttribute('aria-label', `删除步骤 ${index + 1}`)
+  })
+}
+
 function dishFormView() {
   const dish = state.editingDish
   const editing = Boolean(dish)
   const categoryOptions = [...new Set(dishes.map((dish) => dish.category))]
   const hasCover = dish?.image && dish.image !== '/icons/icon.svg'
   const ingredients = dish?.ingredients?.length ? dish.ingredients : [{}]
+  const steps = dish?.steps?.length ? dish.steps : [{}]
   return `<main class="subpage form-page"><header class="subpage-header"><button class="icon-button" data-action="close-form" aria-label="${editing ? '返回菜品详情' : '返回菜单'}">${icons.back}</button><h1>${editing ? '编辑菜品' : '新增菜品'}</h1><button class="icon-button form-save-button" type="submit" form="dish-form" aria-label="${editing ? '保存菜品修改' : '保存菜品'}">${icons.send}</button></header>
     <form id="dish-form" class="dish-form" data-mode="${editing ? 'edit' : 'create'}">
       <input id="dish-form-image" class="upload-input" name="imageFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif" aria-describedby="dish-image-status">
@@ -332,7 +358,10 @@ function dishFormView() {
         <div id="ingredient-list">${ingredients.map((ing, idx) => ingredientRow(ing, idx)).join('')}</div>
       </section>
       <label class="sr-only" for="dish-form-category">菜品分类</label><input id="dish-form-category" name="category" list="category-list" maxlength="10" required placeholder="菜品分类（必填）" value="${escapeAttr(dish?.category || '')}"><datalist id="category-list">${categoryOptions.map((category) => `<option value="${escapeAttr(category)}"></option>`).join('')}</datalist>
-      <label class="sr-only" for="dish-form-steps">制作步骤</label><textarea id="dish-form-steps" name="steps" maxlength="5000" required placeholder="制作步骤，每行填写一个步骤（必填）">${escapeHtml(dish?.steps?.join('\n') || '')}</textarea>
+      <section class="steps-section" aria-labelledby="steps-heading">
+        <div class="form-section-heading"><h2 id="steps-heading">制作步骤</h2><button type="button" data-action="add-step" aria-label="添加一个制作步骤">${icons.plus}</button></div>
+        <div id="step-list">${steps.map((step, index) => stepRow(step, index)).join('')}</div>
+      </section>
     </form></main>`
 }
 
@@ -400,6 +429,41 @@ document.addEventListener('click', async (event) => {
     } else {
       row.remove()
     }
+    return
+  }
+  if (action === 'add-step') {
+    const list = document.querySelector('#step-list')
+    if (list && list.children.length >= 20) { showToast('最多添加 20 个制作步骤'); return }
+    const key = Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+    list.insertAdjacentHTML('beforeend', stepRow({}, key))
+    updateStepNumbers()
+    list.lastElementChild.querySelector('textarea')?.focus()
+    return
+  }
+  if (action === 'remove-step') {
+    const row = button.closest('[data-step-row]')
+    if (!row) return
+    const list = row.parentElement
+    if (list.children.length === 1) {
+      row.querySelector('textarea').value = ''
+      row.dataset.image = ''
+      row.querySelector('.step-image-preview').innerHTML = `${icons.upload}<span>添加图片 <small>选填</small></span>`
+      row.querySelector('.step-image-upload').classList.remove('has-image')
+      row.querySelector('.step-image-clear')?.remove()
+      row.querySelector('textarea')?.focus()
+    } else {
+      row.remove()
+      updateStepNumbers()
+    }
+    return
+  }
+  if (action === 'clear-step-image') {
+    const row = button.closest('[data-step-row]')
+    row.dataset.image = ''
+    row.querySelector('.step-image-input').value = ''
+    row.querySelector('.step-image-preview').innerHTML = `${icons.upload}<span>添加图片 <small>选填</small></span>`
+    row.querySelector('.step-image-upload').classList.remove('has-image')
+    button.remove()
     return
   }
   if (action === 'retry-dishes') { await loadDishes(); return }
@@ -513,7 +577,27 @@ document.addEventListener('submit', async (event) => {
     showToast('请完整填写所有用料（食材和用量都不能为空）')
     return
   }
-  const steps = formData.get('steps').split(/\r?\n/).map((step) => step.trim()).filter(Boolean).slice(0, 20)
+  const stepRows = [...event.target.querySelectorAll('[data-step-row]')]
+  const steps = []
+  for (const row of stepRows) {
+    const instruction = row.querySelector('[name="stepInstruction"]').value.trim()
+    if (!instruction) {
+      showToast('请填写每个制作步骤的说明')
+      row.querySelector('[name="stepInstruction"]')?.focus()
+      return
+    }
+    const stepImageFile = row.querySelector('[name="stepImage"]').files[0]
+    let stepImage = row.dataset.image || null
+    if (stepImageFile) {
+      try {
+        stepImage = await uploadDishImage(stepImageFile)
+      } catch (error) {
+        showToast(error.message || '步骤图片上传失败，请检查网络后重试')
+        return
+      }
+    }
+    steps.push({ instruction, image: stepImage })
+  }
   let dish = {
     category: formData.get('category').trim(),
     name: formData.get('name').trim(),
@@ -557,6 +641,27 @@ document.addEventListener('input', (event) => {
 })
 
 document.addEventListener('change', (event) => {
+  if (event.target.classList.contains('step-image-input')) {
+    const file = event.target.files[0]
+    if (!file) return
+    if (file.size > 15 * 1024 * 1024) {
+      event.target.value = ''
+      showToast('图片不能超过 15MB')
+      return
+    }
+    const row = event.target.closest('[data-step-row]')
+    const preview = row.querySelector('.step-image-preview')
+    const image = document.createElement('img')
+    image.src = URL.createObjectURL(file)
+    image.alt = '待上传的步骤图片预览'
+    image.addEventListener('load', () => URL.revokeObjectURL(image.src), { once: true })
+    preview.replaceChildren(image)
+    row.querySelector('.step-image-upload').classList.add('has-image')
+    if (!row.querySelector('.step-image-clear')) {
+      row.insertAdjacentHTML('beforeend', '<button class="step-image-clear" type="button" data-action="clear-step-image">移除图片</button>')
+    }
+    return
+  }
   if (event.target.id !== 'dish-form-image') return
   const file = event.target.files[0]
   const preview = document.querySelector('#dish-image-preview')

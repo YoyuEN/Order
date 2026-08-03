@@ -72,7 +72,15 @@ const dishSchema = z.object({
     name: z.string().trim().min(1).max(100),
     amount: z.string().trim().min(1).max(100),
   })).max(20).default([]),
-  steps: z.array(z.string().trim().min(1).max(1000)).max(20).default([]),
+  steps: z.array(z.union([
+    z.string().trim().min(1).max(1000).transform((instruction) => ({ instruction, image: null })),
+    z.object({
+      instruction: z.string().trim().min(1).max(1000),
+      image: z.string().trim().max(1000)
+        .refine((value) => value.startsWith('/') || /^https?:\/\//.test(value))
+        .nullable(),
+    }),
+  ])).min(1).max(20),
 })
 
 const idSchema = z.coerce.number().int().positive()

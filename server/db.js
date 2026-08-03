@@ -60,10 +60,15 @@ export async function initializeDatabase() {
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
       dish_id BIGINT UNSIGNED NOT NULL,
       instruction VARCHAR(1000) NOT NULL,
+      image_url VARCHAR(1000) NULL,
       sort_order INT UNSIGNED NOT NULL DEFAULT 0,
       PRIMARY KEY (id), INDEX idx_dish_steps_dish_id (dish_id),
       CONSTRAINT fk_dish_steps_dish FOREIGN KEY (dish_id) REFERENCES dishes(id) ON DELETE CASCADE
     ) ENGINE=InnoDB`)
+    const [stepImageColumns] = await connection.query("SHOW COLUMNS FROM dish_steps LIKE 'image_url'")
+    if (!stepImageColumns.length) {
+      await connection.query('ALTER TABLE dish_steps ADD COLUMN image_url VARCHAR(1000) NULL AFTER instruction')
+    }
     await connection.query(`CREATE TABLE IF NOT EXISTS orders (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
       order_number VARCHAR(32) NOT NULL,
@@ -151,7 +156,7 @@ export async function listDishes() {
     'SELECT dish_id, ingredient_name, amount FROM dish_ingredients ORDER BY dish_id, sort_order, id',
   )
   const [stepRows] = await pool.query(
-    'SELECT dish_id, instruction FROM dish_steps ORDER BY dish_id, sort_order, id',
+    'SELECT dish_id, instruction, image_url FROM dish_steps ORDER BY dish_id, sort_order, id',
   )
   const optionsByDish = new Map()
   for (const row of optionRows) {
@@ -168,7 +173,7 @@ export async function listDishes() {
   const stepsByDish = new Map()
   for (const row of stepRows) {
     const steps = stepsByDish.get(String(row.dish_id)) || []
-    steps.push(row.instruction)
+    steps.push({ instruction: row.instruction, image: row.image_url || null })
     stepsByDish.set(String(row.dish_id), steps)
   }
   return dishRows.map((row) => ({
@@ -197,7 +202,7 @@ export async function getDish(id, connection = pool) {
     [id],
   )
   const [stepRows] = await connection.execute(
-    'SELECT instruction FROM dish_steps WHERE dish_id = ? ORDER BY sort_order, id',
+    'SELECT instruction, image_url FROM dish_steps WHERE dish_id = ? ORDER BY sort_order, id',
     [id],
   )
   return {
@@ -209,7 +214,7 @@ export async function getDish(id, connection = pool) {
       name: ingredient.ingredient_name,
       amount: ingredient.amount,
     })),
-    steps: stepRows.map((step) => step.instruction),
+    steps: stepRows.map((step) => ({ instruction: step.instruction, image: step.image_url || null })),
   }
 }
 
@@ -235,9 +240,10 @@ export async function createDish(dish) {
       )
     }
     for (const [index, step] of (dish.steps || []).entries()) {
+      const normalizedStep = typeof step === 'string' ? { instruction: step, image: null } : step
       await connection.execute(
-        'INSERT INTO dish_steps (dish_id, instruction, sort_order) VALUES (?, ?, ?)',
-        [result.insertId, step, index],
+        'INSERT INTO dish_steps (dish_id, instruction, image_url, sort_order) VALUES (?, ?, ?, ?)',
+        [result.insertId, normalizedStep.instruction, normalizedStep.image || null, index],
       )
     }
     await connection.commit()
@@ -288,9 +294,10 @@ export async function updateDish(id, dish) {
       )
     }
     for (const [index, step] of (dish.steps || []).entries()) {
+      const normalizedStep = typeof step === 'string' ? { instruction: step, image: null } : step
       await connection.execute(
-        'INSERT INTO dish_steps (dish_id, instruction, sort_order) VALUES (?, ?, ?)',
-        [id, step, index],
+        'INSERT INTO dish_steps (dish_id, instruction, image_url, sort_order) VALUES (?, ?, ?, ?)',
+        [id, normalizedStep.instruction, normalizedStep.image || null, index],
       )
     }
     const updatedDish = await getDish(id, connection)

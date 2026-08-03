@@ -29,7 +29,10 @@ test('菜品支持新增、查询、修改和删除', async () => {
       { name: '测试食材', amount: '100克' },
       { name: '测试调料', amount: '少许' },
     ],
-    steps: ['准备食材', '完成烹饪'],
+    steps: [
+      { instruction: '准备食材', image: null },
+      { instruction: '完成烹饪', image: '/uploads/dishes/step-finished.jpg' },
+    ],
   })
   createdDishId = Number(created.id)
 
@@ -40,7 +43,10 @@ test('菜品支持新增、查询、修改和删除', async () => {
     { name: '测试食材', amount: '100克' },
     { name: '测试调料', amount: '少许' },
   ])
-  assert.deepEqual(found.steps, ['准备食材', '完成烹饪'])
+  assert.deepEqual(found.steps, [
+    { instruction: '准备食材', image: null },
+    { instruction: '完成烹饪', image: '/uploads/dishes/step-finished.jpg' },
+  ])
 
   const updated = await updateDish(createdDishId, {
     category: '测试分类',
@@ -50,13 +56,19 @@ test('菜品支持新增、查询、修改和删除', async () => {
     image: '/icons/icon.svg',
     options: ['小份', '大份'],
     ingredients: [{ name: '更新食材', amount: '2份' }],
-    steps: ['更新后的步骤'],
+    steps: [
+      { instruction: '更新后的第一步', image: '/uploads/dishes/step-updated.jpg' },
+      { instruction: '更新后的第二步', image: null },
+    ],
   })
   assert.equal(updated.desc, '修改状态')
   assert.equal(updated.spicy, 1)
   assert.deepEqual(updated.options, ['小份', '大份'])
   assert.deepEqual(updated.ingredients, [{ name: '更新食材', amount: '2份' }])
-  assert.deepEqual(updated.steps, ['更新后的步骤'])
+  assert.deepEqual(updated.steps, [
+    { instruction: '更新后的第一步', image: '/uploads/dishes/step-updated.jpg' },
+    { instruction: '更新后的第二步', image: null },
+  ])
 
   const listed = await listDishes()
   assert.equal(listed.find((dish) => dish.id === createdDishId)?.desc, '修改状态')
