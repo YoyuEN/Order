@@ -310,8 +310,8 @@ function profileView() {
 function ingredientRow(ingredient = {}, key) {
   const idKey = key || Math.random().toString(36).slice(2, 8)
   return `<div class="ingredient-row" data-ingredient-row>
-    <label class="sr-only" for="ing-name-${idKey}">食材</label><input id="ing-name-${idKey}" name="ingredientName" maxlength="100" required placeholder="食材（必填）" value="${escapeAttr(ingredient.name || '')}">
-    <label class="sr-only" for="ing-amount-${idKey}">用量</label><input id="ing-amount-${idKey}" name="ingredientAmount" maxlength="100" required placeholder="用量（必填）" value="${escapeAttr(ingredient.amount || '')}">
+    <label class="sr-only" for="ing-name-${idKey}">食材</label><input id="ing-name-${idKey}" name="ingredientName" maxlength="100" placeholder="食材（选填）" value="${escapeAttr(ingredient.name || '')}">
+    <label class="sr-only" for="ing-amount-${idKey}">用量</label><input id="ing-amount-${idKey}" name="ingredientAmount" maxlength="100" placeholder="用量（选填）" value="${escapeAttr(ingredient.amount || '')}">
     <button class="ingredient-remove" type="button" data-action="remove-ingredient" aria-label="删除这条用料">${icons.close}</button>
   </div>`
 }
@@ -321,8 +321,8 @@ function stepRow(step = {}, key) {
   const idKey = key || Math.random().toString(36).slice(2, 8)
   const hasImage = Boolean(normalizedStep.image)
   return `<div class="step-row" data-step-row data-image="${escapeAttr(normalizedStep.image || '')}">
-    <div class="step-row-heading"><span data-step-number>步骤</span><button class="step-remove" type="button" data-action="remove-step" aria-label="删除这个制作步骤">${icons.trash}</button></div>
-    <label class="sr-only" for="step-instruction-${idKey}">步骤说明</label><textarea id="step-instruction-${idKey}" name="stepInstruction" maxlength="1000" required placeholder="填写这一步的做法（必填）">${escapeHtml(normalizedStep.instruction || '')}</textarea>
+    <div class="step-row-heading"><span data-step-number data-step-index="${Number(key) + 1 || 1}">步骤 ${Number(key) + 1 || 1}</span><button class="step-remove" type="button" data-action="remove-step" aria-label="删除这个制作步骤">${icons.trash}</button></div>
+    <label class="sr-only" for="step-instruction-${idKey}">步骤说明</label><textarea id="step-instruction-${idKey}" name="stepInstruction" maxlength="1000" placeholder="填写这一步的做法（选填）">${escapeHtml(normalizedStep.instruction || '')}</textarea>
     <input id="step-image-${idKey}" class="upload-input step-image-input" name="stepImage" type="file" accept="image/jpeg,image/png,image/webp,image/gif">
     <label class="step-image-upload ${hasImage ? 'has-image' : ''}" for="step-image-${idKey}">
       <span class="step-image-preview">${hasImage ? `<img src="${escapeAttr(normalizedStep.image)}" alt="当前步骤图片">` : `${icons.upload}<span>添加图片 <small>选填</small></span>`}</span>
@@ -334,7 +334,10 @@ function stepRow(step = {}, key) {
 function updateStepNumbers() {
   document.querySelectorAll('[data-step-row]').forEach((row, index) => {
     const number = row.querySelector('[data-step-number]')
-    if (number) number.textContent = `步骤 ${index + 1}`
+    if (number) {
+      number.textContent = `步骤 ${index + 1}`
+      number.dataset.stepIndex = index + 1
+    }
     row.querySelector('.step-remove')?.setAttribute('aria-label', `删除步骤 ${index + 1}`)
   })
 }
@@ -348,18 +351,18 @@ function dishFormView() {
   const steps = dish?.steps?.length ? dish.steps : [{}]
   return `<main class="subpage form-page"><header class="subpage-header"><button class="icon-button" data-action="close-form" aria-label="${editing ? '返回菜品详情' : '返回菜单'}">${icons.back}</button><h1>${editing ? '编辑菜品' : '新增菜品'}</h1><button class="icon-button form-save-button" type="submit" form="dish-form" aria-label="${editing ? '保存菜品修改' : '保存菜品'}">${icons.send}</button></header>
     <form id="dish-form" class="dish-form" data-mode="${editing ? 'edit' : 'create'}">
-      <input id="dish-form-image" class="upload-input" name="imageFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif" aria-describedby="dish-image-status">
+      <input id="dish-form-image" class="upload-input" name="imageFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif" aria-describedby="dish-image-status" ${hasCover ? '' : 'required'}>
       <label class="dish-cover-upload ${hasCover ? 'has-image' : ''}" for="dish-form-image">
         <span id="dish-image-preview" class="dish-image-preview">${hasCover ? `<img src="${escapeAttr(dish.image)}" alt="当前菜品封面">` : `<span class="dish-cover-placeholder">${icons.upload}<strong>添加菜品封面</strong><small>支持 JPG、PNG、WebP 或 GIF，最大 15MB</small></span>`}</span>
         <span class="dish-cover-change" id="dish-image-status">${icons.upload} ${hasCover ? '更换封面' : '尚未选择图片'}</span>
       </label>
       <label class="sr-only" for="dish-form-name">菜品名称</label><input id="dish-form-name" name="name" maxlength="20" required placeholder="菜品名称（必填）" value="${escapeAttr(dish?.name || '')}" autofocus>
-      <label class="sr-only" for="dish-form-desc">菜品描述</label><textarea id="dish-form-desc" name="desc" maxlength="60" required placeholder="菜品描述：介绍食材、口味或特色（必填）">${escapeHtml(dish?.desc || '')}</textarea>
+      <label class="sr-only" for="dish-form-desc">菜品描述</label><textarea id="dish-form-desc" name="desc" maxlength="60" placeholder="菜品描述：介绍食材、口味或特色（选填）">${escapeHtml(dish?.desc || '')}</textarea>
       <section class="ingredients-section" aria-labelledby="ingredients-heading">
         <div class="form-section-heading"><h2 id="ingredients-heading">用料</h2><button type="button" data-action="add-ingredient" aria-label="添加一条用料">${icons.plus}</button></div>
         <div id="ingredient-list">${ingredients.map((ing, idx) => ingredientRow(ing, idx)).join('')}</div>
       </section>
-      <label class="sr-only" for="dish-form-category">菜品分类</label><input id="dish-form-category" name="category" list="category-list" maxlength="10" required placeholder="菜品分类（必填）" value="${escapeAttr(dish?.category || '')}"><datalist id="category-list">${categoryOptions.map((category) => `<option value="${escapeAttr(category)}"></option>`).join('')}</datalist>
+      <label class="sr-only" for="dish-form-category">菜品分类</label><input id="dish-form-category" name="category" list="category-list" maxlength="10" placeholder="菜品分类（选填）" value="${escapeAttr(dish?.category || '')}"><datalist id="category-list">${categoryOptions.map((category) => `<option value="${escapeAttr(category)}"></option>`).join('')}</datalist>
       <section class="steps-section" aria-labelledby="steps-heading">
         <div class="form-section-heading"><h2 id="steps-heading">制作步骤</h2><button type="button" data-action="add-step" aria-label="添加一个制作步骤">${icons.plus}</button></div>
         <div id="step-list">${steps.map((step, index) => stepRow(step, index)).join('')}</div>
@@ -560,6 +563,12 @@ document.addEventListener('submit', async (event) => {
   const editingDish = state.editingDish
   const formData = new FormData(event.target)
   const imageFile = formData.get('imageFile')
+  const hasExistingCover = editingDish?.image && editingDish.image !== '/icons/icon.svg'
+  if (!imageFile?.size && !hasExistingCover) {
+    showToast('请添加菜品封面')
+    document.querySelector('.dish-cover-upload')?.focus()
+    return
+  }
   let image = editingDish?.image || '/icons/icon.svg'
   if (imageFile?.size) {
     try {
@@ -574,22 +583,14 @@ document.addEventListener('submit', async (event) => {
   const ingredients = ingredientNames.map((name, index) => ({
     name: name.trim(),
     amount: (ingredientAmounts[index] || '').trim(),
-  })).filter((item) => item.name || item.amount)
-  if (ingredients.length === 0 || ingredients.some((item) => !item.name || !item.amount)) {
-    showToast('请完整填写所有用料（食材和用量都不能为空）')
-    return
-  }
+  })).filter((item) => item.name && item.amount)
   const stepRows = [...event.target.querySelectorAll('[data-step-row]')]
   const steps = []
   for (const row of stepRows) {
     const instruction = row.querySelector('[name="stepInstruction"]').value.trim()
-    if (!instruction) {
-      showToast('请填写每个制作步骤的说明')
-      row.querySelector('[name="stepInstruction"]')?.focus()
-      return
-    }
     const stepImageFile = row.querySelector('[name="stepImage"]').files[0]
     let stepImage = row.dataset.image || null
+    if (!instruction && !stepImageFile && !stepImage) continue
     if (stepImageFile) {
       try {
         stepImage = await uploadDishImage(stepImageFile)
@@ -598,7 +599,7 @@ document.addEventListener('submit', async (event) => {
         return
       }
     }
-    steps.push({ instruction, image: stepImage })
+    if (instruction) steps.push({ instruction, image: stepImage })
   }
   let dish = {
     category: formData.get('category').trim(),

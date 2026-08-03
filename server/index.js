@@ -61,9 +61,9 @@ app.use('/uploads', express.static(path.join(projectRoot, 'uploads'), {
 }))
 
 const dishSchema = z.object({
-  category: z.string().trim().min(1).max(50),
+  category: z.string().trim().max(50).default(''),
   name: z.string().trim().min(1).max(100),
-  desc: z.string().trim().min(1).max(500),
+  desc: z.string().trim().max(500).default(''),
   spicy: z.number().int().min(0).max(5),
   image: z.string().trim().max(1000).refine((value) => value.startsWith('/') || /^https?:\/\//.test(value)),
   options: z.array(z.string().trim().min(1).max(100)).min(1).max(6)
@@ -80,7 +80,7 @@ const dishSchema = z.object({
         .refine((value) => value.startsWith('/') || /^https?:\/\//.test(value))
         .nullable(),
     }),
-  ])).min(1).max(20),
+  ])).max(20).default([]),
 })
 
 const idSchema = z.coerce.number().int().positive()

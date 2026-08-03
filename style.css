@@ -1101,11 +1101,19 @@ textarea {
   width: 100%;
   min-height: 46px;
   margin-top: 10px;
-  padding: 10px 12px;
+  padding: 11px 2px;
   color: var(--ink);
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  outline: none;
+  transition: background-color 150ms ease-out;
+}
+
+.dish-form>input:focus,
+.dish-form>textarea:focus,
+.form-row input:focus {
+  background: #faf7f1;
 }
 
 .form-row {
@@ -1297,19 +1305,26 @@ textarea {
 .ingredient-row {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(0, .65fr) auto;
-  gap: 6px;
+  gap: 10px;
   align-items: start;
+  border-bottom: 1px solid var(--line);
 }
 
 .ingredient-row input {
   width: 100%;
   min-height: 42px;
-  padding: 8px 10px;
+  padding: 8px 2px;
   color: var(--ink);
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: 10px;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  outline: none;
   font-size: 14px;
+  transition: background-color 150ms ease-out;
+}
+
+.ingredient-row input:focus {
+  background: #faf7f1;
 }
 
 .ingredient-remove {
@@ -1335,37 +1350,66 @@ textarea {
 .steps-section {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-top: 16px;
+  gap: 14px;
+  margin-top: 22px;
 }
 
 #step-list {
   display: grid;
-  gap: 12px;
+  gap: 0;
 }
 
 .step-row {
   position: relative;
-  padding: 12px;
-  background: var(--paper);
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  min-width: 0;
+  padding: 0 0 20px 44px;
+  background: transparent;
+  border: 0;
+}
+
+.step-row:not(:last-child)::after {
+  position: absolute;
+  top: 32px;
+  bottom: 0;
+  left: 15px;
+  width: 1px;
+  content: '';
+  background: #ddd4c7;
 }
 
 .step-row-heading {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 8px;
+  min-height: 32px;
+  margin-bottom: 4px;
   color: var(--ink);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.step-row-heading [data-step-number]::before {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  left: 0;
+  display: grid;
+  width: 31px;
+  height: 31px;
+  place-items: center;
+  color: white;
+  background: var(--ink);
+  border-radius: 50%;
+  content: attr(data-step-index);
   font-size: 12px;
-  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .step-remove {
   display: grid;
-  width: 34px;
-  height: 34px;
+  width: 40px;
+  height: 40px;
+  margin: -4px -6px -4px 0;
   padding: 0;
   place-items: center;
   color: var(--muted);
@@ -1380,28 +1424,43 @@ textarea {
 
 .step-row textarea {
   width: 100%;
-  min-height: 84px;
-  padding: 10px;
+  min-height: 72px;
+  padding: 8px 2px;
   color: var(--ink);
-  background: white;
-  border: 1px solid var(--line);
-  border-radius: 8px;
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  outline: none;
   font: inherit;
   line-height: 1.55;
   resize: vertical;
+  transition: background-color 150ms ease-out;
+}
+
+.step-row textarea:focus {
+  background: #faf7f1;
 }
 
 .step-image-upload {
   display: grid;
   min-height: 50px;
-  margin-top: 8px;
+  margin-top: 6px;
   place-items: center;
   color: var(--muted);
-  background: white;
+  background: #faf7f1;
   border: 1px dashed #d3b9a8;
   border-radius: 8px;
   cursor: pointer;
   overflow: hidden;
+  transition-property: background-color, border-color;
+  transition-duration: 150ms;
+  transition-timing-function: ease-out;
+}
+
+.step-image-upload:hover {
+  color: var(--ink);
+  background: #fff8f1;
+  border-color: var(--red);
 }
 
 .step-image-input:focus-visible + .step-image-upload {
@@ -1447,6 +1506,11 @@ textarea {
   border: 0;
   font-size: 11px;
   cursor: pointer;
+}
+
+.dish-form input:not([type='file']):focus-visible,
+.dish-form textarea:focus-visible {
+  outline: none;
 }
 
 .cart-page {
