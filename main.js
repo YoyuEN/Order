@@ -6,7 +6,7 @@ let dishes = []
 let dishesStatus = 'loading'
 const state = {
   category: '全部', search: '', picks: [],
-  selectedDish: null, editingDish: null, selectedOption: '', note: '', view: 'menu', orderNumber: '', confirmed: false, confirmedCount: 0, imagePreviewOpen: false, showSuccessModal: false,
+  selectedDish: null, editingDish: null, selectedOption: '', note: '', view: 'menu', orderNumber: '', confirmed: false, confirmedCount: 0, imagePreviewOpen: false, showSuccessModal: false, moreMenuOpen: false,
 }
 
 const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
@@ -144,6 +144,11 @@ const icons = {
   plus: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
   upload: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v5h14v-5"/></svg>',
   close: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>',
+  heart: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 21C12 21 3 14 3 8a5 5 0 0 1 9-3 5 5 0 0 1 9 3c0 6-9 13-9 13Z"/></svg>',
+  user: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z"/><path d="M4 22a8 8 0 0 1 16 0"/></svg>',
+  more: '<svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>',
+  edit: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>',
+  trash: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14Z"/></svg>',
 }
 
 function markMenuAsDraft() {
@@ -169,14 +174,11 @@ function menuView() {
         ? filtered.map(dishCard).join('')
         : `<div class="empty"><b>${dishes.length ? '没有找到相关菜品' : '数据库中暂无菜品'}</b><span>${dishes.length ? '换个关键词或分类试试' : '请使用新增菜品录入菜单'}</span></div>`
   return `
-    <header class="app-header">
-      <div><h1>乐梵小灶</h1></div>
-    </header>
     <main class="menu-layout">
       <section class="menu-panel" aria-labelledby="menu-heading">
         <div class="search-wrap">${icons.search}<label class="sr-only" for="dish-search">搜索菜品</label><input id="dish-search" type="search" placeholder="搜索想吃的菜" value="${escapeHtml(state.search)}" autocomplete="off"></div>
         <nav class="categories" aria-label="菜品分类">${categories.map((category) => `<button class="category ${category === state.category ? 'active' : ''}" data-category="${escapeAttr(category)}" aria-pressed="${category === state.category}">${escapeHtml(category)}</button>`).join('')}</nav>
-        <div class="section-title"><div><p class="eyebrow">今日菜单</p><h2 id="menu-heading">${state.category === '全部' ? '人气菜品' : escapeHtml(state.category)}</h2></div><div class="section-actions"><span>${filtered.length} 道菜</span><button data-action="new-dish">${icons.plus} 新增菜品</button></div></div>
+        <div class="section-title"><div><p class="eyebrow">今日菜单</p><h2 id="menu-heading">${state.category === '全部' ? '人气菜品' : escapeHtml(state.category)}</h2></div><span>${filtered.length} 道菜</span></div>
         <div class="dish-grid">${dishGrid}</div>
       </section>
       <aside class="desktop-cart" aria-label="已点菜单">${pickedContent(true)}</aside>
@@ -194,12 +196,19 @@ function dishCard(dish) {
 
 function bottomBar() {
   const count = pickCount()
-  return `<nav class="bottom-nav" aria-label="主导航"><button class="nav-item active" data-action="menu">${icons.home}<span>点菜</span></button><button class="cart-summary" data-action="picks" aria-label="查看已点菜单，共${count}道菜"><span class="cart-icon">${icons.list}${count ? `<b>${count}</b>` : ''}</span><span><strong>${count ? `已经点了 ${count} 道菜` : '还没有点菜'}</strong><small>${count ? '看看有没有漏掉想吃的' : '喜欢什么就点什么吧'}</small></span></button><button class="nav-item" data-action="orders">${icons.receipt}<span>已点</span></button></nav>`
+  const active = state.view
+  return `<nav class="bottom-nav" aria-label="主导航">
+    <button class="nav-item ${active === 'menu' ? 'active' : ''}" data-action="menu">${icons.home}<span>首页</span></button>
+    <button class="nav-item ${active === 'orders' ? 'active' : ''}" data-action="orders">${icons.receipt}<span>已点</span></button>
+    <button class="nav-center-btn" data-action="new-dish" aria-label="新增菜品">${icons.plus}</button>
+    <button class="nav-item ${active === 'favorites' ? 'active' : ''}" data-action="favorites">${icons.heart}<span>收藏</span></button>
+    <button class="nav-item ${active === 'profile' ? 'active' : ''}" data-action="profile">${icons.user}<span>我的</span></button>
+  </nav>`
 }
 
 function detailView() {
   const dish = state.selectedDish
-  return `<main class="detail-view"><button class="icon-button floating-back" data-action="close" aria-label="返回菜单">${icons.back}</button><button class="dish-image-preview-button" data-action="preview-image" aria-label="放大预览${escapeAttr(dish.name)}图片">${imageMarkup(dish, true)}<span class="preview-hint" aria-hidden="true">点击查看大图</span></button><section class="detail-sheet"><p class="eyebrow">${escapeHtml(dish.category)}</p><h1>${escapeHtml(dish.name)}</h1><p class="detail-desc">${escapeHtml(dish.desc)}</p><div class="detail-meta"><strong>今天就吃这个</strong></div><div class="management-actions" aria-label="菜品管理"><button class="secondary-button" data-action="edit-dish">编辑菜品</button><button class="danger-button" data-action="delete-dish">删除菜品</button></div><fieldset><legend>选择规格 <em>必选</em></legend><div class="option-list">${dish.options.map((option, index) => `<label><input type="radio" name="option" value="${escapeAttr(option)}" ${state.selectedOption === option || (!state.selectedOption && index === 0) ? 'checked' : ''}><span>${escapeHtml(option)}</span></label>`).join('')}</div></fieldset><label class="note-label" for="dish-note">口味备注 <span>选填</span></label><textarea id="dish-note" maxlength="50" placeholder="例如：不要香菜、少盐">${escapeHtml(state.note)}</textarea><button class="primary-button" data-action="confirm-add">${state.picks.some((item) => item.dishId === dish.id) ? '更新选择' : '就点这道菜'}</button></section></main>`
+  return `<main class="detail-view"><button class="icon-button floating-back" data-action="close" aria-label="返回菜单">${icons.back}</button><button class="icon-button floating-more" data-action="toggle-more-menu" aria-label="更多操作" aria-expanded="${state.moreMenuOpen}">${icons.more}</button>${state.moreMenuOpen ? `<div class="more-menu-dropdown" role="menu" aria-label="菜品管理"><button class="more-menu-item" data-action="edit-dish" role="menuitem">${icons.edit}<span>编辑菜品</span></button><button class="more-menu-item more-menu-item--danger" data-action="delete-dish" role="menuitem">${icons.trash}<span>删除菜品</span></button></div>` : ''}${state.moreMenuOpen ? '<button class="more-menu-backdrop" data-action="close-more-menu" aria-label="关闭菜单"></button>' : ''}<button class="dish-image-preview-button" data-action="preview-image" aria-label="放大预览${escapeAttr(dish.name)}图片">${imageMarkup(dish, true)}<span class="preview-hint" aria-hidden="true">点击查看大图</span></button><section class="detail-sheet"><p class="eyebrow">${escapeHtml(dish.category)}</p><h1>${escapeHtml(dish.name)}</h1><p class="detail-desc">${escapeHtml(dish.desc)}</p><div class="detail-meta"><strong>今天就吃这个</strong></div><fieldset><legend>选择规格 <em>必选</em></legend><div class="option-list">${dish.options.map((option, index) => `<label><input type="radio" name="option" value="${escapeAttr(option)}" ${state.selectedOption === option || (!state.selectedOption && index === 0) ? 'checked' : ''}><span>${escapeHtml(option)}</span></label>`).join('')}</div></fieldset><label class="note-label" for="dish-note">口味备注 <span>选填</span></label><textarea id="dish-note" maxlength="50" placeholder="例如：不要香菜、少盐">${escapeHtml(state.note)}</textarea><button class="primary-button" data-action="confirm-add">${state.picks.some((item) => item.dishId === dish.id) ? '更新选择' : '就点这道菜'}</button></section></main>`
 }
 
 function imagePreview() {
@@ -224,8 +233,16 @@ function pickedView() {
 }
 
 function ordersView() {
-  if (!state.picks.length) return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回菜单">${icons.back}</button><h1>今天吃什么</h1><span></span></header><div class="empty full-empty"><span class="empty-icon">${icons.receipt}</span><b>还没有点菜</b><span>选好想吃的菜后，这里会记录结果</span><button class="secondary-button" data-action="menu">去点菜</button></div></main>`
-  return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回菜单">${icons.back}</button><h1>今天吃什么</h1><span></span></header><section class="cart-page history-menu"><div class="menu-status"><span class="success-mark success-mark--small">✓</span><div><b>${state.confirmed ? '菜单已经选好啦' : '还差最后确认'}</b><span>一共 ${pickCount()} 道菜，都是今天想吃的</span></div></div>${pickedContent()}</section><div class="history-actions"><button class="secondary-button" data-action="menu">继续点菜</button></div></main>`
+  if (!state.picks.length) return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回菜单">${icons.back}</button><h1>今天吃什么</h1><span></span></header><div class="empty full-empty"><span class="empty-icon">${icons.receipt}</span><b>还没有点菜</b><span>选好想吃的菜后，这里会记录结果</span><button class="secondary-button" data-action="menu">去点菜</button></div>${bottomBar()}</main>`
+  return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回菜单">${icons.back}</button><h1>今天吃什么</h1><span></span></header><section class="cart-page history-menu"><div class="menu-status"><span class="success-mark success-mark--small">✓</span><div><b>${state.confirmed ? '菜单已经选好啦' : '还差最后确认'}</b><span>一共 ${pickCount()} 道菜，都是今天想吃的</span></div></div>${pickedContent()}</section><div class="history-actions"><button class="secondary-button" data-action="menu">继续点菜</button></div>${bottomBar()}</main>`
+}
+
+function favoritesView() {
+  return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回菜单">${icons.back}</button><h1>收藏的菜</h1><span></span></header><div class="empty full-empty"><span class="empty-icon">${icons.heart}</span><b>还没有收藏</b><span>点开喜欢的菜品，长按即可收藏</span><button class="secondary-button" data-action="menu">去逛逛</button></div>${bottomBar()}</main>`
+}
+
+function profileView() {
+  return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回菜单">${icons.back}</button><h1>我的</h1><span></span></header><div class="empty full-empty"><span class="empty-icon">${icons.user}</span><b>个人中心</b><span>账户设置与偏好</span></div>${bottomBar()}</main>`
 }
 
 function dishFormView() {
@@ -258,7 +275,7 @@ function closeSuccessModal() {
 
 function render() {
   const categoryScrollLeft = document.querySelector('.categories')?.scrollLeft
-  const views = { menu: menuView, detail: detailView, picks: pickedView, orders: ordersView, dishForm: dishFormView }
+  const views = { menu: menuView, detail: detailView, picks: pickedView, orders: ordersView, dishForm: dishFormView, favorites: favoritesView, profile: profileView }
   document.querySelector('#app').innerHTML = `${views[state.view]()}${imagePreview()}${successModal()}`
   document.body.classList.toggle('image-preview-open', state.imagePreviewOpen)
   document.body.classList.toggle('modal-open', state.showSuccessModal)
@@ -290,6 +307,8 @@ document.addEventListener('click', async (event) => {
   const action = button.dataset.action
   if (action === 'preview-image') { state.imagePreviewOpen = true; render(); return }
   if (action === 'close-image-preview') { closeImagePreview(); return }
+  if (action === 'toggle-more-menu') { state.moreMenuOpen = !state.moreMenuOpen; render(); return }
+  if (action === 'close-more-menu') { state.moreMenuOpen = false; render(); return }
   if (action === 'retry-dishes') { await loadDishes(); return }
   if (action === 'edit-dish') { state.editingDish = state.selectedDish; navigate('dishForm'); return }
   if (action === 'delete-dish') {
@@ -325,6 +344,8 @@ document.addEventListener('click', async (event) => {
   if (action === 'picks') { navigate('picks') }
   if (action === 'orders') { await loadLatestOrder(); navigate('orders') }
   if (action === 'new-dish') { state.editingDish = null; navigate('dishForm') }
+  if (action === 'favorites') { navigate('favorites') }
+  if (action === 'profile') { navigate('profile') }
   if (action === 'clear' && window.confirm('确定清空全部已点菜品吗？')) {
     button.disabled = true
     try {

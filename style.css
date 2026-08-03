@@ -121,7 +121,7 @@ svg {
 
 .menu-panel {
   min-width: 0;
-  padding: 16px 14px 112px;
+  padding: calc(16px + env(safe-area-inset-top)) 14px 112px;
 }
 
 .search-wrap {
@@ -416,10 +416,9 @@ svg {
   bottom: 0;
   left: 0;
   display: grid;
-  grid-template-columns: 58px minmax(0, 1fr) 58px;
-  gap: 8px;
+  grid-template-columns: repeat(5, 1fr);
   align-items: center;
-  padding: 9px 12px calc(9px + env(safe-area-inset-bottom));
+  padding: 6px 0 calc(9px + env(safe-area-inset-bottom));
   background: rgba(255, 253, 248, .96);
   border-top: 1px solid var(--line);
   box-shadow: 0 -8px 25px rgba(66, 52, 39, .08);
@@ -446,6 +445,30 @@ svg {
 
 .nav-item.active {
   color: var(--red);
+}
+
+.nav-center-btn {
+  display: grid;
+  width: 48px;
+  height: 48px;
+  margin: 0 auto;
+  padding: 0;
+  place-items: center;
+  color: white;
+  background: var(--red);
+  border: 0;
+  border-radius: 50%;
+  box-shadow: 0 4px 16px rgba(217, 75, 50, .35);
+  cursor: pointer;
+  transition: transform .15s ease, box-shadow .15s ease;
+}
+
+.nav-center-btn:active {
+  transform: scale(.92);
+}
+
+.nav-center-btn svg {
+  width: 26px;
 }
 
 .cart-summary {
@@ -614,6 +637,80 @@ body.image-preview-open {
   color: white;
   background: rgba(30, 28, 25, .54) !important;
   backdrop-filter: blur(8px);
+}
+
+.floating-more {
+  position: absolute;
+  z-index: 4;
+  top: calc(15px + env(safe-area-inset-top));
+  right: 15px;
+  color: white;
+  background: rgba(30, 28, 25, .54) !important;
+  backdrop-filter: blur(8px);
+}
+
+.more-menu-backdrop {
+  position: fixed;
+  z-index: 3;
+  inset: 0;
+  background: transparent;
+}
+
+.more-menu-dropdown {
+  position: absolute;
+  z-index: 5;
+  top: calc(62px + env(safe-area-inset-top));
+  right: 15px;
+  display: flex;
+  min-width: 160px;
+  flex-direction: column;
+  padding: 6px;
+  background: white;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  box-shadow: 0 12px 36px rgba(66, 52, 39, .18);
+  animation: dropdown-in .15s ease-out;
+  transform-origin: top right;
+}
+
+@keyframes dropdown-in {
+  from { opacity: 0; transform: scale(.92); }
+}
+
+.more-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 11px 14px;
+  color: #3d362d;
+  background: none;
+  border: 0;
+  border-radius: 10px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .12s;
+}
+
+.more-menu-item svg {
+  width: 18px;
+  color: var(--muted);
+}
+
+.more-menu-item:hover {
+  background: #f5f1e9;
+}
+
+.more-menu-item--danger {
+  color: #a52f24;
+}
+
+.more-menu-item--danger svg {
+  color: #a52f24;
+}
+
+.more-menu-item--danger:hover {
+  background: #fff3f0;
 }
 
 .icon-button {
