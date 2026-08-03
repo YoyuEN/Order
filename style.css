@@ -1120,6 +1120,49 @@ textarea {
   background: #faf7f1;
 }
 
+#dish-form-name {
+  min-height: 54px;
+  margin-top: 12px;
+  color: var(--ink);
+  font-family: 'Noto Serif SC', serif;
+  font-size: 22px;
+  font-weight: 900;
+  line-height: 1.35;
+}
+
+#dish-form-name::placeholder {
+  color: #8d887f;
+  font-family: 'Noto Sans SC', system-ui, sans-serif;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+#dish-form-desc {
+  min-height: 78px;
+  margin-top: 2px;
+  color: #666159;
+  font-size: 14px;
+  line-height: 1.75;
+  resize: vertical;
+}
+
+#dish-form-desc::placeholder {
+  color: #969087;
+  font-size: 13px;
+}
+
+#dish-form-category {
+  margin-top: 14px;
+  color: var(--red-dark);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+#dish-form-category::placeholder {
+  color: #9a7c70;
+  font-weight: 600;
+}
+
 .form-row {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(0, .65fr);
@@ -1278,8 +1321,9 @@ textarea {
 
 .form-section-heading h2 {
   margin: 0;
-  font-size: 13px;
-  font-weight: 700;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 800;
 }
 
 .form-section-heading button {
@@ -1325,6 +1369,23 @@ textarea {
   outline: none;
   font-size: 14px;
   transition: background-color 150ms ease-out;
+}
+
+.ingredient-row input[name='ingredientName'] {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.ingredient-row input[name='ingredientAmount'] {
+  color: #716b62;
+  font-size: 13px;
+  text-align: right;
+}
+
+.ingredient-row input::placeholder {
+  color: #989188;
+  font-weight: 400;
 }
 
 .ingredient-row input:focus {
@@ -1430,15 +1491,23 @@ textarea {
   width: 100%;
   min-height: 72px;
   padding: 8px 2px;
-  color: var(--ink);
+  color: #4d4943;
   background: transparent;
   border: 0;
   border-radius: 6px;
   outline: none;
-  font: inherit;
-  line-height: 1.55;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.7;
   resize: vertical;
   transition: background-color 150ms ease-out;
+}
+
+.step-row textarea::placeholder {
+  color: #999289;
+  font-size: 13px;
+  font-weight: 400;
 }
 
 .step-row textarea:focus {
@@ -1447,8 +1516,9 @@ textarea {
 
 .step-image-upload {
   display: grid;
+  width: calc(100% + 44px);
   min-height: 50px;
-  margin-top: 6px;
+  margin: 6px 0 0 -44px;
   place-items: center;
   color: var(--muted);
   background: #faf7f1;
