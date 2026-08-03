@@ -65,17 +65,19 @@ const dishSchema = z.object({
   name: z.string().trim().min(1).max(100),
   desc: z.string().trim().max(500).default(''),
   spicy: z.number().int().min(0).max(5),
-  image: z.string().trim().max(1000).refine((value) => value.startsWith('/') || /^https?:\/\//.test(value)),
+  image: z.string().trim().max(1000)
+    .refine((value) => value.startsWith('/') || /^https?:\/\//.test(value))
+    .refine((value) => value !== '/icons/icon.svg', '菜品封面不能为空'),
   options: z.array(z.string().trim().min(1).max(100)).min(1).max(6)
     .refine((options) => new Set(options).size === options.length, '规格名称不能重复'),
   ingredients: z.array(z.object({
-    name: z.string().trim().min(1).max(100),
-    amount: z.string().trim().min(1).max(100),
+    name: z.string().trim().max(100),
+    amount: z.string().trim().max(100),
   })).max(20).default([]),
   steps: z.array(z.union([
     z.string().trim().min(1).max(1000).transform((instruction) => ({ instruction, image: null })),
     z.object({
-      instruction: z.string().trim().min(1).max(1000),
+      instruction: z.string().trim().max(1000),
       image: z.string().trim().max(1000)
         .refine((value) => value.startsWith('/') || /^https?:\/\//.test(value))
         .nullable(),

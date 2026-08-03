@@ -351,7 +351,7 @@ function dishFormView() {
   const steps = dish?.steps?.length ? dish.steps : [{}]
   return `<main class="subpage form-page"><header class="subpage-header"><button class="icon-button" data-action="close-form" aria-label="${editing ? '返回菜品详情' : '返回菜单'}">${icons.back}</button><h1>${editing ? '编辑菜品' : '新增菜品'}</h1><button class="icon-button form-save-button" type="submit" form="dish-form" aria-label="${editing ? '保存菜品修改' : '保存菜品'}">${icons.send}</button></header>
     <form id="dish-form" class="dish-form" data-mode="${editing ? 'edit' : 'create'}">
-      <input id="dish-form-image" class="upload-input" name="imageFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif" aria-describedby="dish-image-status" ${hasCover ? '' : 'required'}>
+      <input id="dish-form-image" class="upload-input" name="imageFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif" aria-describedby="dish-image-status" aria-required="true">
       <label class="dish-cover-upload ${hasCover ? 'has-image' : ''}" for="dish-form-image">
         <span id="dish-image-preview" class="dish-image-preview">${hasCover ? `<img src="${escapeAttr(dish.image)}" alt="当前菜品封面">` : `<span class="dish-cover-placeholder">${icons.upload}<strong>添加菜品封面</strong><small>支持 JPG、PNG、WebP 或 GIF，最大 15MB</small></span>`}</span>
         <span class="dish-cover-change" id="dish-image-status">${icons.upload} ${hasCover ? '更换封面' : '尚未选择图片'}</span>
@@ -583,7 +583,7 @@ document.addEventListener('submit', async (event) => {
   const ingredients = ingredientNames.map((name, index) => ({
     name: name.trim(),
     amount: (ingredientAmounts[index] || '').trim(),
-  })).filter((item) => item.name && item.amount)
+  })).filter((item) => item.name || item.amount)
   const stepRows = [...event.target.querySelectorAll('[data-step-row]')]
   const steps = []
   for (const row of stepRows) {
@@ -599,7 +599,7 @@ document.addEventListener('submit', async (event) => {
         return
       }
     }
-    if (instruction) steps.push({ instruction, image: stepImage })
+    steps.push({ instruction, image: stepImage })
   }
   let dish = {
     category: formData.get('category').trim(),
