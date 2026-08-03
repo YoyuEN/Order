@@ -1350,6 +1350,78 @@ textarea {
   margin-top: 9px;
 }
 
+body.modal-open {
+  overflow: hidden;
+}
+
+.modal-overlay {
+  position: fixed;
+  z-index: 200;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(30, 27, 23, .52);
+  backdrop-filter: blur(4px);
+  animation: modal-fade-in .25s ease-out;
+}
+
+@keyframes modal-fade-in {
+  from { opacity: 0; }
+}
+
+.success-modal {
+  display: flex;
+  width: 100%;
+  max-width: 380px;
+  flex-direction: column;
+  align-items: center;
+  padding: 36px 24px 28px;
+  background: var(--cream);
+  border-radius: 20px;
+  box-shadow: 0 20px 60px rgba(30, 27, 23, .25);
+  text-align: center;
+  animation: modal-scale-in .3s cubic-bezier(.34, 1.56, .64, 1);
+}
+
+@keyframes modal-scale-in {
+  from {
+    opacity: 0;
+    transform: scale(.88) translateY(16px);
+  }
+}
+
+.success-modal .success-mark {
+  margin-bottom: 18px;
+}
+
+.success-modal h1 {
+  margin: 2px 0;
+  font-family: 'Noto Serif SC';
+  font-size: 28px;
+}
+
+.success-modal>p:not(.eyebrow) {
+  margin: 6px 0 18px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.success-modal .order-ticket {
+  width: 100%;
+  margin-bottom: 4px;
+}
+
+.success-modal .primary-button,
+.success-modal .secondary-button {
+  width: 100%;
+}
+
+.success-modal .secondary-button {
+  margin-top: 9px;
+}
+
 .toast-region {
   position: fixed;
   z-index: 100;

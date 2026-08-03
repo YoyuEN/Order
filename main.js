@@ -6,7 +6,7 @@ let dishes = []
 let dishesStatus = 'loading'
 const state = {
   category: '全部', search: '', picks: [],
-  selectedDish: null, editingDish: null, selectedOption: '', note: '', view: 'menu', orderNumber: '', confirmed: false, confirmedCount: 0, imagePreviewOpen: false,
+  selectedDish: null, editingDish: null, selectedOption: '', note: '', view: 'menu', orderNumber: '', confirmed: false, confirmedCount: 0, imagePreviewOpen: false, showSuccessModal: false,
 }
 
 const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
@@ -45,6 +45,10 @@ function navigate(view, { replace = false } = {}) {
 function goBack() {
   if (state.imagePreviewOpen) {
     closeImagePreview()
+    return true
+  }
+  if (state.showSuccessModal) {
+    closeSuccessModal()
     return true
   }
   if (state.view === 'menu') return false
@@ -242,15 +246,22 @@ function dishFormView() {
     </form></main>`
 }
 
-function successView() {
-  return `<main class="success-view"><div class="success-mark">✓</div><p class="eyebrow">今天的菜单定好啦</p><h1>点菜完成</h1><p>都是想吃的，准备一起好好吃饭吧</p><div class="order-ticket"><span>已选菜品 <b>${state.confirmedCount} 道</b></span></div><button class="primary-button" data-action="orders">查看今天的菜单</button><button class="secondary-button" data-action="menu">继续加菜</button></main>`
+function successModal() {
+  if (!state.showSuccessModal) return ''
+  return `<div class="modal-overlay" data-action="close-success-modal" role="dialog" aria-modal="true" aria-label="点餐成功"><div class="success-modal"><div class="success-mark">✓</div><p class="eyebrow">今天的菜单定好啦</p><h1>点菜完成</h1><p>都是想吃的，准备一起好好吃饭吧</p><div class="order-ticket"><span>已选菜品 <b>${state.confirmedCount} 道</b></span></div><button class="primary-button" data-action="orders-from-modal">查看今天的菜单</button><button class="secondary-button" data-action="close-success-modal">继续加菜</button></div></div>`
+}
+
+function closeSuccessModal() {
+  state.showSuccessModal = false
+  render()
 }
 
 function render() {
   const categoryScrollLeft = document.querySelector('.categories')?.scrollLeft
-  const views = { menu: menuView, detail: detailView, picks: pickedView, orders: ordersView, success: successView, dishForm: dishFormView }
-  document.querySelector('#app').innerHTML = `${views[state.view]()}${imagePreview()}`
+  const views = { menu: menuView, detail: detailView, picks: pickedView, orders: ordersView, dishForm: dishFormView }
+  document.querySelector('#app').innerHTML = `${views[state.view]()}${imagePreview()}${successModal()}`
   document.body.classList.toggle('image-preview-open', state.imagePreviewOpen)
+  document.body.classList.toggle('modal-open', state.showSuccessModal)
   if (state.view === 'menu' && categoryScrollLeft !== undefined) document.querySelector('.categories').scrollLeft = categoryScrollLeft
   if (state.imagePreviewOpen) document.querySelector('.image-lightbox-close')?.focus()
   else if (state.view === 'detail') document.querySelector('.floating-back')?.focus()
@@ -307,7 +318,9 @@ document.addEventListener('click', async (event) => {
   }
   if (action === 'remove-pick') { state.picks.splice(Number(button.dataset.index), 1); markMenuAsDraft(); render(); return }
   if (action === 'close') { goBack() }
-  if (action === 'menu') { navigate('menu', { replace: state.view === 'success' }) }
+  if (action === 'close-success-modal') { closeSuccessModal(); return }
+  if (action === 'orders-from-modal') { closeSuccessModal(); await loadLatestOrder(); navigate('orders'); return }
+  if (action === 'menu') { navigate('menu', { replace: true }) }
   if (action === 'close-form') { state.editingDish = null; goBack() }
   if (action === 'picks') { navigate('picks') }
   if (action === 'orders') { await loadLatestOrder(); navigate('orders') }
@@ -346,16 +359,19 @@ document.addEventListener('click', async (event) => {
       showToast('确认失败，数据未保存，请检查网络后重试')
       return
     }
-    navigate('success')
+    state.showSuccessModal = true
+    render()
   }
 })
 
 document.addEventListener('click', (event) => {
   if (event.target.classList.contains('image-lightbox')) closeImagePreview()
+  if (event.target.closest('.modal-overlay') && !event.target.closest('.success-modal')) closeSuccessModal()
 })
 
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && state.imagePreviewOpen) closeImagePreview()
+  if (event.key === 'Escape' && state.showSuccessModal) closeSuccessModal()
 })
 
 document.addEventListener('submit', async (event) => {
