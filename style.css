@@ -780,9 +780,7 @@ body.image-preview-open {
 }
 
 .recipe-steps li {
-  display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
-  gap: 10px;
+  display: block;
   counter-increment: recipe-step;
 }
 
@@ -790,6 +788,7 @@ body.image-preview-open {
   display: grid;
   width: 26px;
   height: 26px;
+  margin-bottom: 10px;
   place-items: center;
   color: white;
   background: var(--red);
@@ -800,15 +799,15 @@ body.image-preview-open {
 }
 
 .recipe-steps img {
-  grid-column: 2;
+  display: block;
   width: 100%;
   max-height: 280px;
+  margin-bottom: 9px;
   object-fit: cover;
   border-radius: 8px;
 }
 
 .recipe-steps div {
-  grid-column: 2;
   line-height: 1.65;
 }
 
