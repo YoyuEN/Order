@@ -27,6 +27,7 @@ function restoreNavigationState(entry) {
   state.view = entry.view || 'menu'
   state.selectedDish = entry.selectedDishId ? dishes.find((dish) => dish.id === entry.selectedDishId) || state.selectedDish : null
   state.editingDish = entry.editingDishId ? dishes.find((dish) => dish.id === entry.editingDishId) || state.editingDish : null
+  state.moreMenuOpen = false
 }
 
 function restoreScroll(scrollY = 0) {
@@ -472,7 +473,7 @@ function showToast(message) {
 }
 
 function openDish(id) {
-  state.selectedDish = dishes.find((dish) => dish.id === Number(id)); const existing = state.picks.find((item) => item.dishId === state.selectedDish.id); state.selectedOption = existing?.option || state.selectedDish.options[0]; state.note = existing?.note || ''; navigate('detail')
+  state.selectedDish = dishes.find((dish) => dish.id === Number(id)); const existing = state.picks.find((item) => item.dishId === state.selectedDish.id); state.selectedOption = existing?.option || state.selectedDish.options[0]; state.note = existing?.note || ''; state.moreMenuOpen = false; navigate('detail')
 }
 
 function addDish(dish, option = dish.options[0], note = '') {
@@ -579,9 +580,11 @@ document.addEventListener('click', async (event) => {
     return
   }
   if (action === 'retry-dishes') { await loadDishes(); return }
-  if (action === 'edit-dish') { state.editingDish = state.selectedDish; navigate('dishForm'); return }
+  if (action === 'edit-dish') { state.moreMenuOpen = false; state.editingDish = state.selectedDish; navigate('dishForm'); return }
   if (action === 'delete-dish') {
     const dish = state.selectedDish
+    state.moreMenuOpen = false
+    render()
     if (!window.confirm(`确定删除「${dish.name}」吗？此操作无法撤销。`)) return
     button.disabled = true
     try {
