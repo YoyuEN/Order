@@ -997,6 +997,7 @@ textarea {
 }
 
 .dish-form>input,
+.dish-form>textarea,
 .form-row input {
   width: 100%;
   min-height: 46px;
@@ -1149,6 +1150,100 @@ textarea {
 
 .dish-form fieldset {
   margin-bottom: 4px;
+}
+
+.ingredients-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 14px 0 7px;
+}
+
+.form-section-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.form-section-heading h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.form-section-heading button {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px;
+  color: var(--red);
+  background: none;
+  border: 0;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.form-section-heading button svg {
+  width: 20px;
+}
+
+#ingredient-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ingredient-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, .65fr) auto;
+  gap: 6px;
+  align-items: start;
+}
+
+.ingredient-row input {
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 10px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 14px;
+}
+
+.ingredient-remove {
+  display: grid;
+  width: 34px;
+  height: 42px;
+  padding: 0;
+  place-items: center;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.ingredient-remove svg {
+  width: 18px;
+}
+
+.ingredient-remove:hover {
+  color: var(--red);
+}
+
+#dish-form-steps {
+  min-height: 120px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  font-size: 14px;
+  line-height: 1.65;
+  resize: vertical;
 }
 
 .cart-page {

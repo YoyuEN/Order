@@ -246,11 +246,21 @@ function profileView() {
   return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回菜单">${icons.back}</button><h1>我的</h1><span></span></header><div class="empty full-empty"><span class="empty-icon">${icons.user}</span><b>个人中心</b><span>账户设置与偏好</span></div>${bottomBar()}</main>`
 }
 
+function ingredientRow(ingredient = {}, key) {
+  const idKey = key || Math.random().toString(36).slice(2, 8)
+  return `<div class="ingredient-row" data-ingredient-row>
+    <label class="sr-only" for="ing-name-${idKey}">食材</label><input id="ing-name-${idKey}" name="ingredientName" maxlength="100" required placeholder="食材（必填）" value="${escapeAttr(ingredient.name || '')}">
+    <label class="sr-only" for="ing-amount-${idKey}">用量</label><input id="ing-amount-${idKey}" name="ingredientAmount" maxlength="100" required placeholder="用量（必填）" value="${escapeAttr(ingredient.amount || '')}">
+    <button class="ingredient-remove" type="button" data-action="remove-ingredient" aria-label="删除这条用料">${icons.close}</button>
+  </div>`
+}
+
 function dishFormView() {
   const dish = state.editingDish
   const editing = Boolean(dish)
   const categoryOptions = [...new Set(dishes.map((dish) => dish.category))]
   const hasCover = dish?.image && dish.image !== '/icons/icon.svg'
+  const ingredients = dish?.ingredients?.length ? dish.ingredients : [{}]
   return `<main class="subpage form-page"><header class="subpage-header"><button class="icon-button" data-action="close-form" aria-label="${editing ? '返回菜品详情' : '返回菜单'}">${icons.back}</button><h1>${editing ? '编辑菜品' : '新增菜品'}</h1><button class="icon-button form-save-button" type="submit" form="dish-form" aria-label="${editing ? '保存菜品修改' : '保存菜品'}">${icons.send}</button></header>
     <form id="dish-form" class="dish-form" data-mode="${editing ? 'edit' : 'create'}">
       <input id="dish-form-image" class="upload-input" name="imageFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif" aria-describedby="dish-image-status">
@@ -259,10 +269,13 @@ function dishFormView() {
         <span class="dish-cover-change" id="dish-image-status">${icons.upload} ${hasCover ? '更换封面' : '尚未选择图片'}</span>
       </label>
       <label class="sr-only" for="dish-form-name">菜品名称</label><input id="dish-form-name" name="name" maxlength="20" required placeholder="菜品名称（必填）" value="${escapeAttr(dish?.name || '')}" autofocus>
-      <label class="sr-only" for="dish-form-category">菜品分类</label><input id="dish-form-category" name="category" list="category-list" maxlength="10" required placeholder="菜品分类（必填）" value="${escapeAttr(dish?.category || '')}"><datalist id="category-list">${categoryOptions.map((category) => `<option value="${escapeAttr(category)}"></option>`).join('')}</datalist>
       <label class="sr-only" for="dish-form-desc">菜品描述</label><textarea id="dish-form-desc" name="desc" maxlength="60" required placeholder="菜品描述：介绍食材、口味或特色（必填）">${escapeHtml(dish?.desc || '')}</textarea>
-      <fieldset><legend>辣度</legend><div class="option-list">${[0, 1, 2, 3].map((spicy) => `<label><input type="radio" name="spicy" value="${spicy}" ${(dish?.spicy || 0) === spicy ? 'checked' : ''}><span>${['不辣', '微辣 🌶', '中辣 🌶🌶', '重辣 🌶🌶🌶'][spicy]}</span></label>`).join('')}</div></fieldset>
-      <label class="sr-only" for="dish-form-options">可选规格</label><input id="dish-form-options" name="options" maxlength="60" placeholder="可选规格：小份、大份（选填）" value="${escapeAttr(dish?.options?.join(', ') || '')}"><small class="field-hint">多个规格请用逗号分隔，留空时使用“标准份”</small>
+      <section class="ingredients-section" aria-labelledby="ingredients-heading">
+        <div class="form-section-heading"><h2 id="ingredients-heading">用料</h2><button type="button" data-action="add-ingredient" aria-label="添加一条用料">${icons.plus}</button></div>
+        <div id="ingredient-list">${ingredients.map((ing, idx) => ingredientRow(ing, idx)).join('')}</div>
+      </section>
+      <label class="sr-only" for="dish-form-category">菜品分类</label><input id="dish-form-category" name="category" list="category-list" maxlength="10" required placeholder="菜品分类（必填）" value="${escapeAttr(dish?.category || '')}"><datalist id="category-list">${categoryOptions.map((category) => `<option value="${escapeAttr(category)}"></option>`).join('')}</datalist>
+      <label class="sr-only" for="dish-form-steps">制作步骤</label><textarea id="dish-form-steps" name="steps" maxlength="5000" required placeholder="制作步骤，每行填写一个步骤（必填）">${escapeHtml(dish?.steps?.join('\n') || '')}</textarea>
     </form></main>`
 }
 
@@ -312,6 +325,26 @@ document.addEventListener('click', async (event) => {
   if (action === 'close-image-preview') { closeImagePreview(); return }
   if (action === 'toggle-more-menu') { state.moreMenuOpen = !state.moreMenuOpen; render(); return }
   if (action === 'close-more-menu') { state.moreMenuOpen = false; render(); return }
+  if (action === 'add-ingredient') {
+    const list = document.querySelector('#ingredient-list')
+    if (list && list.children.length >= 20) { showToast('最多添加 20 条用料'); return }
+    const key = Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+    list.insertAdjacentHTML('beforeend', ingredientRow({}, key))
+    list.lastElementChild.querySelector('input')?.focus()
+    return
+  }
+  if (action === 'remove-ingredient') {
+    const row = button.closest('[data-ingredient-row]')
+    if (!row) return
+    const list = row.parentElement
+    if (list.children.length === 1) {
+      row.querySelectorAll('input').forEach((input) => { input.value = '' })
+      row.querySelector('input')?.focus()
+    } else {
+      row.remove()
+    }
+    return
+  }
   if (action === 'retry-dishes') { await loadDishes(); return }
   if (action === 'edit-dish') { state.editingDish = state.selectedDish; navigate('dishForm'); return }
   if (action === 'delete-dish') {
@@ -413,16 +446,27 @@ document.addEventListener('submit', async (event) => {
       return
     }
   }
-  const options = formData.get('options').split(/[,，]/).map((option) => option.trim()).filter(Boolean).slice(0, 6)
-  const uniqueOptions = [...new Set(options)]
+  const ingredientNames = formData.getAll('ingredientName')
+  const ingredientAmounts = formData.getAll('ingredientAmount')
+  const ingredients = ingredientNames.map((name, index) => ({
+    name: name.trim(),
+    amount: (ingredientAmounts[index] || '').trim(),
+  })).filter((item) => item.name || item.amount)
+  if (ingredients.length === 0 || ingredients.some((item) => !item.name || !item.amount)) {
+    showToast('请完整填写所有用料（食材和用量都不能为空）')
+    return
+  }
+  const steps = formData.get('steps').split(/\r?\n/).map((step) => step.trim()).filter(Boolean).slice(0, 20)
   let dish = {
     category: formData.get('category').trim(),
     name: formData.get('name').trim(),
     desc: formData.get('desc').trim(),
     sales: 0,
-    spicy: Number(formData.get('spicy')),
+    spicy: editingDish?.spicy || 0,
     image,
-    options: uniqueOptions.length ? uniqueOptions : ['标准份'],
+    options: editingDish?.options?.length ? editingDish.options : ['标准份'],
+    ingredients,
+    steps,
   }
   if (editingDish) {
     try {

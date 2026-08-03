@@ -68,6 +68,11 @@ const dishSchema = z.object({
   image: z.string().trim().max(1000).refine((value) => value.startsWith('/') || /^https?:\/\//.test(value)),
   options: z.array(z.string().trim().min(1).max(100)).min(1).max(6)
     .refine((options) => new Set(options).size === options.length, '规格名称不能重复'),
+  ingredients: z.array(z.object({
+    name: z.string().trim().min(1).max(100),
+    amount: z.string().trim().min(1).max(100),
+  })).max(20).default([]),
+  steps: z.array(z.string().trim().min(1).max(1000)).max(20).default([]),
 })
 
 const idSchema = z.coerce.number().int().positive()

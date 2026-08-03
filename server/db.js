@@ -47,6 +47,23 @@ export async function initializeDatabase() {
       PRIMARY KEY (id), UNIQUE KEY uk_dish_option (dish_id, option_name),
       CONSTRAINT fk_dish_options_dish FOREIGN KEY (dish_id) REFERENCES dishes(id) ON DELETE CASCADE
     ) ENGINE=InnoDB`)
+    await connection.query(`CREATE TABLE IF NOT EXISTS dish_ingredients (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      dish_id BIGINT UNSIGNED NOT NULL,
+      ingredient_name VARCHAR(100) NOT NULL,
+      amount VARCHAR(100) NOT NULL,
+      sort_order INT UNSIGNED NOT NULL DEFAULT 0,
+      PRIMARY KEY (id), INDEX idx_dish_ingredients_dish_id (dish_id),
+      CONSTRAINT fk_dish_ingredients_dish FOREIGN KEY (dish_id) REFERENCES dishes(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB`)
+    await connection.query(`CREATE TABLE IF NOT EXISTS dish_steps (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      dish_id BIGINT UNSIGNED NOT NULL,
+      instruction VARCHAR(1000) NOT NULL,
+      sort_order INT UNSIGNED NOT NULL DEFAULT 0,
+      PRIMARY KEY (id), INDEX idx_dish_steps_dish_id (dish_id),
+      CONSTRAINT fk_dish_steps_dish FOREIGN KEY (dish_id) REFERENCES dishes(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB`)
     await connection.query(`CREATE TABLE IF NOT EXISTS orders (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
       order_number VARCHAR(32) NOT NULL,
@@ -130,17 +147,37 @@ export async function listDishes() {
   const [optionRows] = await pool.query(
     'SELECT dish_id, option_name FROM dish_options ORDER BY dish_id, sort_order, id',
   )
+  const [ingredientRows] = await pool.query(
+    'SELECT dish_id, ingredient_name, amount FROM dish_ingredients ORDER BY dish_id, sort_order, id',
+  )
+  const [stepRows] = await pool.query(
+    'SELECT dish_id, instruction FROM dish_steps ORDER BY dish_id, sort_order, id',
+  )
   const optionsByDish = new Map()
   for (const row of optionRows) {
     const options = optionsByDish.get(String(row.dish_id)) || []
     options.push(row.option_name)
     optionsByDish.set(String(row.dish_id), options)
   }
+  const ingredientsByDish = new Map()
+  for (const row of ingredientRows) {
+    const ingredients = ingredientsByDish.get(String(row.dish_id)) || []
+    ingredients.push({ name: row.ingredient_name, amount: row.amount })
+    ingredientsByDish.set(String(row.dish_id), ingredients)
+  }
+  const stepsByDish = new Map()
+  for (const row of stepRows) {
+    const steps = stepsByDish.get(String(row.dish_id)) || []
+    steps.push(row.instruction)
+    stepsByDish.set(String(row.dish_id), steps)
+  }
   return dishRows.map((row) => ({
     id: Number(row.id), category: row.category, name: row.name, desc: row.description,
     sales: row.sales, spicy: row.spicy, badge: row.badge || undefined,
     image: row.image_url || '/icons/icon.svg', soldOut: Boolean(row.sold_out),
     custom: Boolean(row.is_custom), options: optionsByDish.get(String(row.id)) || ['标准份'],
+    ingredients: ingredientsByDish.get(String(row.id)) || [],
+    steps: stepsByDish.get(String(row.id)) || [],
   }))
 }
 
@@ -155,11 +192,24 @@ export async function getDish(id, connection = pool) {
     'SELECT option_name FROM dish_options WHERE dish_id = ? ORDER BY sort_order, id',
     [id],
   )
+  const [ingredientRows] = await connection.execute(
+    'SELECT ingredient_name, amount FROM dish_ingredients WHERE dish_id = ? ORDER BY sort_order, id',
+    [id],
+  )
+  const [stepRows] = await connection.execute(
+    'SELECT instruction FROM dish_steps WHERE dish_id = ? ORDER BY sort_order, id',
+    [id],
+  )
   return {
     id: Number(row.id), category: row.category, name: row.name, desc: row.description,
     sales: row.sales, spicy: row.spicy, badge: row.badge || undefined,
     image: row.image_url || '/icons/icon.svg', soldOut: Boolean(row.sold_out),
     custom: Boolean(row.is_custom), options: optionRows.map((option) => option.option_name),
+    ingredients: ingredientRows.map((ingredient) => ({
+      name: ingredient.ingredient_name,
+      amount: ingredient.amount,
+    })),
+    steps: stepRows.map((step) => step.instruction),
   }
 }
 
@@ -172,14 +222,34 @@ export async function createDish(dish) {
        VALUES (?, ?, ?, ?, ?, TRUE)`,
       [dish.category, dish.name, dish.desc, dish.spicy, dish.image],
     )
-    for (const [index, option] of dish.options.entries()) {
+    for (const [index, option] of (dish.options || ['标准份']).entries()) {
       await connection.execute(
         'INSERT INTO dish_options (dish_id, option_name, sort_order) VALUES (?, ?, ?)',
         [result.insertId, option, index],
       )
     }
+    for (const [index, ingredient] of (dish.ingredients || []).entries()) {
+      await connection.execute(
+        'INSERT INTO dish_ingredients (dish_id, ingredient_name, amount, sort_order) VALUES (?, ?, ?, ?)',
+        [result.insertId, ingredient.name, ingredient.amount, index],
+      )
+    }
+    for (const [index, step] of (dish.steps || []).entries()) {
+      await connection.execute(
+        'INSERT INTO dish_steps (dish_id, instruction, sort_order) VALUES (?, ?, ?)',
+        [result.insertId, step, index],
+      )
+    }
     await connection.commit()
-    return { ...dish, id: result.insertId, sales: 0, custom: true }
+    return {
+      ...dish,
+      id: result.insertId,
+      sales: 0,
+      custom: true,
+      options: dish.options || ['标准份'],
+      ingredients: dish.ingredients || [],
+      steps: dish.steps || [],
+    }
   } catch (error) {
     await connection.rollback()
     throw error
@@ -203,10 +273,24 @@ export async function updateDish(id, dish) {
       return null
     }
     await connection.execute('DELETE FROM dish_options WHERE dish_id = ?', [id])
-    for (const [index, option] of dish.options.entries()) {
+    await connection.execute('DELETE FROM dish_ingredients WHERE dish_id = ?', [id])
+    await connection.execute('DELETE FROM dish_steps WHERE dish_id = ?', [id])
+    for (const [index, option] of (dish.options || ['标准份']).entries()) {
       await connection.execute(
         'INSERT INTO dish_options (dish_id, option_name, sort_order) VALUES (?, ?, ?)',
         [id, option, index],
+      )
+    }
+    for (const [index, ingredient] of (dish.ingredients || []).entries()) {
+      await connection.execute(
+        'INSERT INTO dish_ingredients (dish_id, ingredient_name, amount, sort_order) VALUES (?, ?, ?, ?)',
+        [id, ingredient.name, ingredient.amount, index],
+      )
+    }
+    for (const [index, step] of (dish.steps || []).entries()) {
+      await connection.execute(
+        'INSERT INTO dish_steps (dish_id, instruction, sort_order) VALUES (?, ?, ?)',
+        [id, step, index],
       )
     }
     const updatedDish = await getDish(id, connection)
