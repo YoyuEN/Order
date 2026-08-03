@@ -760,6 +760,49 @@ body.image-preview-open {
   font-size: 23px;
 }
 
+.detail-ingredients {
+  padding: 20px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.detail-ingredients h2 {
+  margin: 0 0 12px;
+  font-size: 16px;
+}
+
+.detail-ingredients dl {
+  margin: 0;
+}
+
+.detail-ingredients dl > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(80px, auto);
+  gap: 16px;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--line);
+}
+
+.detail-ingredients dl > div:last-child {
+  border-bottom: 0;
+}
+
+.detail-ingredients dt,
+.detail-ingredients dd {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.detail-ingredients dt {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.detail-ingredients dd {
+  color: var(--muted);
+  text-align: right;
+}
+
 .recipe-section {
   padding: 20px 0 4px;
   border-bottom: 1px solid var(--line);
