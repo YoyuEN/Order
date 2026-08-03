@@ -920,6 +920,23 @@ textarea {
   text-align: center;
 }
 
+.form-save-button {
+  color: white;
+  background: var(--red);
+  border-color: var(--red);
+  box-shadow: 0 5px 14px rgba(217, 75, 50, .22);
+}
+
+.form-save-button:hover {
+  background: var(--red-dark);
+  border-color: var(--red-dark);
+}
+
+.form-save-button svg {
+  width: 20px;
+  height: 20px;
+}
+
 .form-page {
   background: var(--paper);
 }
@@ -1133,11 +1150,6 @@ textarea {
 .dish-form fieldset {
   margin-bottom: 4px;
 }
-
-.dish-form .primary-button {
-  margin-top: 24px;
-}
-
 
 .cart-page {
   margin: 0 14px;
