@@ -33,7 +33,8 @@ body {
 
 button,
 input,
-textarea {
+textarea,
+select {
   font: inherit;
 }
 
@@ -48,7 +49,8 @@ button,
 
 button:focus-visible,
 input:focus-visible,
-textarea:focus-visible {
+textarea:focus-visible,
+select:focus-visible {
   outline: 3px solid rgba(217, 75, 50, .32);
   outline-offset: 2px;
 }
@@ -1147,18 +1149,6 @@ textarea {
   font-size: 13px;
 }
 
-#dish-form-category {
-  margin-top: 14px;
-  color: var(--red-dark);
-  font-size: 14px;
-  font-weight: 700;
-}
-
-#dish-form-category::placeholder {
-  color: #9a7c70;
-  font-weight: 600;
-}
-
 .form-row {
   display: grid;
   grid-template-columns: minmax(0, 1.35fr) minmax(0, .65fr);
@@ -1302,11 +1292,109 @@ textarea {
   margin-bottom: 4px;
 }
 
+.category-section,
+.options-section,
 .ingredients-section {
   display: flex;
   flex-direction: column;
   gap: 10px;
   margin: 14px 0 7px;
+}
+
+.category-section,
+.options-section {
+  padding: 16px 0 18px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.category-section {
+  margin-top: 18px;
+}
+
+.form-section-copy h2,
+.form-section-heading h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.form-section-copy p,
+.form-section-heading p {
+  margin: 3px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
+.category-select-wrap {
+  position: relative;
+}
+
+.category-select-wrap select {
+  width: 100%;
+  min-height: 50px;
+  padding: 0 46px 0 14px;
+  color: var(--ink);
+  background: var(--cream);
+  border: 1px solid #d8cfc2;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  appearance: none;
+}
+
+.category-select-wrap select:invalid {
+  color: var(--muted);
+  font-weight: 500;
+}
+
+.category-select-wrap > svg {
+  position: absolute;
+  top: 13px;
+  right: 14px;
+  width: 22px;
+  color: var(--red);
+  pointer-events: none;
+}
+
+.custom-category-field {
+  padding-top: 2px;
+}
+
+.custom-category-field[hidden] {
+  display: none;
+}
+
+.custom-category-field label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.custom-category-field input {
+  width: 100%;
+  min-height: 46px;
+  padding: 10px 13px;
+  color: var(--ink);
+  background: var(--cream);
+  border: 1px solid #d8cfc2;
+  border-radius: 8px;
+  outline: none;
+}
+
+.custom-category-field input:focus,
+.category-select-wrap select:focus {
+  border-color: var(--red);
+}
+
+.options-section {
+  margin-top: 7px;
 }
 
 .form-section-heading {
@@ -1317,9 +1405,12 @@ textarea {
 
 .form-section-heading h2 {
   margin: 0;
-  color: var(--ink);
-  font-size: 15px;
-  font-weight: 800;
+}
+
+.form-section-heading h2 em {
+  color: var(--red);
+  font-size: 10px;
+  font-style: normal;
 }
 
 .form-section-heading button {
@@ -1338,6 +1429,85 @@ textarea {
 
 .form-section-heading button svg {
   width: 20px;
+}
+
+.form-section-tools {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.form-section-tools > span {
+  color: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.form-section-heading button:disabled {
+  color: #aaa39a;
+  cursor: default;
+  opacity: .6;
+}
+
+#option-list {
+  display: grid;
+  gap: 8px;
+}
+
+.option-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 42px;
+  overflow: hidden;
+  background: var(--cream);
+  border: 1px solid #ded6cb;
+  border-radius: 8px;
+  transition: border-color 150ms ease-out, box-shadow 150ms ease-out;
+}
+
+.option-row:focus-within {
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px rgba(217, 75, 50, .1);
+}
+
+.option-row input {
+  width: 100%;
+  min-width: 0;
+  min-height: 46px;
+  padding: 9px 13px;
+  color: var(--ink);
+  background: transparent;
+  border: 0;
+  outline: none;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.option-row input::placeholder {
+  color: #999188;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+.option-remove {
+  display: grid;
+  width: 42px;
+  min-height: 46px;
+  padding: 0;
+  place-items: center;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-left: 1px solid var(--line);
+  cursor: pointer;
+}
+
+.option-remove:hover {
+  color: var(--red);
+  background: #fff5f1;
+}
+
+.option-remove svg {
+  width: 17px;
 }
 
 #ingredient-list {

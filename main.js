@@ -207,6 +207,7 @@ const icons = {
   more: '<svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>',
   edit: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>',
   trash: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14Z"/></svg>',
+  chevronDown: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg>',
 }
 
 function markMenuAsDraft() {
@@ -316,6 +317,24 @@ function ingredientRow(ingredient = {}, key) {
   </div>`
 }
 
+function optionRow(option = '', key) {
+  const idKey = key || Math.random().toString(36).slice(2, 8)
+  return `<div class="option-row" data-option-row>
+    <label class="sr-only" for="dish-option-${idKey}">规格名称</label>
+    <input id="dish-option-${idKey}" name="dishOption" maxlength="100" placeholder="例如：小份、微辣、双人份" value="${escapeAttr(option)}">
+    <button class="option-remove" type="button" data-action="remove-option" aria-label="删除规格${option ? ` ${escapeAttr(option)}` : ''}">${icons.close}</button>
+  </div>`
+}
+
+function updateOptionState() {
+  const rows = [...document.querySelectorAll('[data-option-row]')]
+  const count = document.querySelector('[data-option-count]')
+  const addButton = document.querySelector('[data-action="add-option"]')
+  if (count) count.textContent = `${rows.length}/6`
+  if (addButton) addButton.disabled = rows.length >= 6
+  rows.forEach((row, index) => row.querySelector('.option-remove')?.setAttribute('aria-label', `删除规格 ${index + 1}`))
+}
+
 function stepRow(step = {}, key) {
   const normalizedStep = typeof step === 'string' ? { instruction: step, image: null } : step
   const idKey = key || Math.random().toString(36).slice(2, 8)
@@ -345,9 +364,10 @@ function updateStepNumbers() {
 function dishFormView() {
   const dish = state.editingDish
   const editing = Boolean(dish)
-  const categoryOptions = [...new Set(dishes.map((dish) => dish.category))]
+  const categoryOptions = [...new Set(['招牌推荐', '热菜', '凉菜', '主食', '汤品', '饮品', '甜品', ...dishes.map((dish) => dish.category)].filter(Boolean))]
   const hasCover = dish?.image && dish.image !== '/icons/icon.svg'
   const ingredients = dish?.ingredients?.length ? dish.ingredients : [{}]
+  const options = dish?.options?.length ? dish.options : ['标准份']
   const steps = dish?.steps?.length ? dish.steps : [{}]
   return `<main class="subpage form-page"><header class="subpage-header"><button class="icon-button" data-action="close-form" aria-label="${editing ? '返回菜品详情' : '返回菜单'}">${icons.back}</button><h1>${editing ? '编辑菜品' : '新增菜品'}</h1><button class="icon-button form-save-button" type="submit" form="dish-form" aria-label="${editing ? '保存菜品修改' : '保存菜品'}">${icons.send}</button></header>
     <form id="dish-form" class="dish-form" data-mode="${editing ? 'edit' : 'create'}">
@@ -358,11 +378,30 @@ function dishFormView() {
       </label>
       <label class="sr-only" for="dish-form-name">菜品名称</label><input id="dish-form-name" name="name" maxlength="20" required placeholder="菜品名称（必填）" value="${escapeAttr(dish?.name || '')}" autofocus>
       <label class="sr-only" for="dish-form-desc">菜品描述</label><textarea id="dish-form-desc" name="desc" maxlength="60" placeholder="菜品描述：介绍食材、口味或特色（选填）">${escapeHtml(dish?.desc || '')}</textarea>
+      <section class="category-section" aria-labelledby="category-heading">
+        <div class="form-section-copy"><h2 id="category-heading">菜品分类</h2><p>选择分类后，菜品会自动归入首页对应栏目</p></div>
+        <div class="category-select-wrap">
+          <label class="sr-only" for="dish-form-category">选择菜品分类</label>
+          <select id="dish-form-category" name="categoryPreset" required>
+            <option value="" ${dish?.category ? '' : 'selected'} disabled>请选择分类</option>
+            ${categoryOptions.map((category) => `<option value="${escapeAttr(category)}" ${dish?.category === category ? 'selected' : ''}>${escapeHtml(category)}</option>`).join('')}
+            <option value="__custom__">＋ 新增自定义分类</option>
+          </select>
+          ${icons.chevronDown}
+        </div>
+        <div class="custom-category-field" hidden>
+          <label for="dish-form-custom-category">自定义分类名称</label>
+          <input id="dish-form-custom-category" name="customCategory" maxlength="10" placeholder="最多 10 个字" autocomplete="off">
+        </div>
+      </section>
+      <section class="options-section" aria-labelledby="options-heading">
+        <div class="form-section-heading"><div><h2 id="options-heading">菜品规格</h2><p>顾客点菜时可选择一项</p></div><div class="form-section-tools"><span data-option-count>${options.length}/6</span><button type="button" data-action="add-option" aria-label="添加菜品规格" ${options.length >= 6 ? 'disabled' : ''}>${icons.plus}</button></div></div>
+        <div id="option-list">${options.map((option, index) => optionRow(option, index)).join('')}</div>
+      </section>
       <section class="ingredients-section" aria-labelledby="ingredients-heading">
         <div class="form-section-heading"><h2 id="ingredients-heading">用料</h2><button type="button" data-action="add-ingredient" aria-label="添加一条用料">${icons.plus}</button></div>
         <div id="ingredient-list">${ingredients.map((ing, idx) => ingredientRow(ing, idx)).join('')}</div>
       </section>
-      <label class="sr-only" for="dish-form-category">菜品分类</label><input id="dish-form-category" name="category" list="category-list" maxlength="10" placeholder="菜品分类（选填）" value="${escapeAttr(dish?.category || '')}"><datalist id="category-list">${categoryOptions.map((category) => `<option value="${escapeAttr(category)}"></option>`).join('')}</datalist>
       <section class="steps-section" aria-labelledby="steps-heading">
         <div class="form-section-heading"><h2 id="steps-heading">制作步骤</h2><button type="button" data-action="add-step" aria-label="添加一个制作步骤">${icons.plus}</button></div>
         <div id="step-list">${steps.map((step, index) => stepRow(step, index)).join('')}</div>
@@ -416,6 +455,29 @@ document.addEventListener('click', async (event) => {
   if (action === 'close-image-preview') { closeImagePreview(); return }
   if (action === 'toggle-more-menu') { state.moreMenuOpen = !state.moreMenuOpen; render(); return }
   if (action === 'close-more-menu') { state.moreMenuOpen = false; render(); return }
+  if (action === 'add-option') {
+    const list = document.querySelector('#option-list')
+    if (!list || list.children.length >= 6) { showToast('最多添加 6 个菜品规格'); return }
+    const key = Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
+    list.insertAdjacentHTML('beforeend', optionRow('', key))
+    updateOptionState()
+    list.lastElementChild.querySelector('input')?.focus()
+    return
+  }
+  if (action === 'remove-option') {
+    const row = button.closest('[data-option-row]')
+    if (!row) return
+    const list = row.parentElement
+    if (list.children.length === 1) {
+      row.querySelector('input').value = ''
+      row.querySelector('input').focus()
+      showToast('至少需要保留一个菜品规格')
+    } else {
+      row.remove()
+      updateOptionState()
+    }
+    return
+  }
   if (action === 'add-ingredient') {
     const list = document.querySelector('#ingredient-list')
     if (list && list.children.length >= 20) { showToast('最多添加 20 条用料'); return }
@@ -584,6 +646,25 @@ document.addEventListener('submit', async (event) => {
     name: name.trim(),
     amount: (ingredientAmounts[index] || '').trim(),
   })).filter((item) => item.name || item.amount)
+  const options = formData.getAll('dishOption').map((option) => option.trim()).filter(Boolean)
+  if (!options.length) {
+    showToast('请至少填写一个菜品规格')
+    event.target.querySelector('[name="dishOption"]')?.focus()
+    return
+  }
+  if (new Set(options).size !== options.length) {
+    showToast('菜品规格不能重复')
+    const duplicate = options.find((option, index) => options.indexOf(option) !== index)
+    ;[...event.target.querySelectorAll('[name="dishOption"]')].find((input) => input.value.trim() === duplicate)?.focus()
+    return
+  }
+  const categoryPreset = formData.get('categoryPreset')
+  const category = categoryPreset === '__custom__' ? formData.get('customCategory').trim() : categoryPreset.trim()
+  if (!category) {
+    showToast(categoryPreset === '__custom__' ? '请填写自定义分类名称' : '请选择菜品分类')
+    event.target.querySelector(categoryPreset === '__custom__' ? '#dish-form-custom-category' : '#dish-form-category')?.focus()
+    return
+  }
   const stepRows = [...event.target.querySelectorAll('[data-step-row]')]
   const steps = []
   for (const row of stepRows) {
@@ -602,13 +683,13 @@ document.addEventListener('submit', async (event) => {
     steps.push({ instruction, image: stepImage })
   }
   let dish = {
-    category: formData.get('category').trim(),
+    category,
     name: formData.get('name').trim(),
     desc: formData.get('desc').trim(),
     sales: 0,
     spicy: editingDish?.spicy || 0,
     image,
-    options: editingDish?.options?.length ? editingDish.options : ['标准份'],
+    options,
     ingredients,
     steps,
   }
@@ -644,6 +725,15 @@ document.addEventListener('input', (event) => {
 })
 
 document.addEventListener('change', (event) => {
+  if (event.target.id === 'dish-form-category') {
+    const customField = document.querySelector('.custom-category-field')
+    const customInput = document.querySelector('#dish-form-custom-category')
+    const isCustom = event.target.value === '__custom__'
+    customField.hidden = !isCustom
+    customInput.required = isCustom
+    if (isCustom) customInput.focus()
+    return
+  }
   if (event.target.classList.contains('step-image-input')) {
     const file = event.target.files[0]
     if (!file) return
