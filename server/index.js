@@ -30,7 +30,7 @@ const upload = multer({
       callback(null, `${crypto.randomUUID()}${imageExtensions.get(file.mimetype) || ''}`)
     },
   }),
-  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  limits: { fileSize: 15 * 1024 * 1024, files: 1 },
   fileFilter(_request, file, callback) {
     if (!imageExtensions.has(file.mimetype)) {
       callback(new multer.MulterError('LIMIT_UNEXPECTED_FILE', 'image'))
@@ -195,7 +195,7 @@ app.get('/{*path}', (_request, response) => response.sendFile('index.html', { ro
 
 app.use((error, _request, response, _next) => {
   if (error instanceof multer.MulterError) {
-    const message = error.code === 'LIMIT_FILE_SIZE' ? '图片不能超过 5MB' : '仅支持 JPG、PNG、WebP 或 GIF 图片'
+    const message = error.code === 'LIMIT_FILE_SIZE' ? '图片不能超过 15MB' : '仅支持 JPG、PNG、WebP 或 GIF 图片'
     response.status(400).json({ error: message })
     return
   }

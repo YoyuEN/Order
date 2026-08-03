@@ -72,7 +72,64 @@ async function apiRequest(path, options = {}) {
   }
 }
 
+async function compressImage(file) {
+  if (!file.type.startsWith('image/')) throw new Error('仅支持图片文件')
+  if (file.type === 'image/gif') return file
+  const original = await new Promise((resolve, reject) => {
+    const img = new Image()
+    img.onload = () => resolve(img)
+    img.onerror = () => reject(new Error('图片加载失败'))
+    img.src = URL.createObjectURL(file)
+  })
+  const maxDimension = 1600
+  let { width, height } = original
+  if (width > maxDimension || height > maxDimension) {
+    const ratio = maxDimension / Math.max(width, height)
+    width = Math.round(width * ratio)
+    height = Math.round(height * ratio)
+  }
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(original, 0, 0, width, height)
+  canvas.toBlob((blob) => URL.revokeObjectURL(original.src), file.type)
+  const maxSize = 3 * 1024 * 1024
+  const minSize = 500 * 1024
+  let quality = 0.92
+  let blob = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', quality))
+  if (blob.size > maxSize) {
+    const blobLow = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', 0.5))
+    const blobHigh = blob
+    let lo = 0.5, hi = 0.92
+    for (let i = 0; i < 6; i++) {
+      const mid = (lo + hi) / 2
+      const blobMid = await new Promise((resolve) => canvas.toBlob(resolve, 'image/jpeg', mid))
+      if (blobMid.size > maxSize) { hi = mid } else { lo = mid; blob = blobMid }
+    }
+  }
+  if (blob.size < minSize && blob.size > 0) {
+    const ratio = Math.min(Math.sqrt(minSize / blob.size), 1.8)
+    const upscaleCanvas = document.createElement('canvas')
+    upscaleCanvas.width = Math.round(width * ratio)
+    upscaleCanvas.height = Math.round(height * ratio)
+    const uctx = upscaleCanvas.getContext('2d')
+    uctx.imageSmoothingEnabled = true
+    uctx.imageSmoothingQuality = 'high'
+    uctx.drawImage(original, 0, 0, upscaleCanvas.width, upscaleCanvas.height)
+    blob = await new Promise((resolve) => upscaleCanvas.toBlob(resolve, 'image/jpeg', 0.88))
+    URL.revokeObjectURL(original.src)
+    return new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' })
+  }
+  URL.revokeObjectURL(original.src)
+  return new File([blob], file.name.replace(/\.[^.]+$/, '.jpg'), { type: 'image/jpeg' })
+}
+
 async function uploadDishImage(file) {
+  const compressed = await compressImage(file).catch(() => null)
+  const uploadFile = compressed || file
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(), 15000)
   const body = new FormData()
@@ -265,7 +322,7 @@ function dishFormView() {
     <form id="dish-form" class="dish-form" data-mode="${editing ? 'edit' : 'create'}">
       <input id="dish-form-image" class="upload-input" name="imageFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif" aria-describedby="dish-image-status">
       <label class="dish-cover-upload ${hasCover ? 'has-image' : ''}" for="dish-form-image">
-        <span id="dish-image-preview" class="dish-image-preview">${hasCover ? `<img src="${escapeAttr(dish.image)}" alt="当前菜品封面">` : `<span class="dish-cover-placeholder">${icons.upload}<strong>添加菜品封面</strong><small>支持 JPG、PNG、WebP 或 GIF，最大 5MB</small></span>`}</span>
+        <span id="dish-image-preview" class="dish-image-preview">${hasCover ? `<img src="${escapeAttr(dish.image)}" alt="当前菜品封面">` : `<span class="dish-cover-placeholder">${icons.upload}<strong>添加菜品封面</strong><small>支持 JPG、PNG、WebP 或 GIF，最大 15MB</small></span>`}</span>
         <span class="dish-cover-change" id="dish-image-status">${icons.upload} ${hasCover ? '更换封面' : '尚未选择图片'}</span>
       </label>
       <label class="sr-only" for="dish-form-name">菜品名称</label><input id="dish-form-name" name="name" maxlength="20" required placeholder="菜品名称（必填）" value="${escapeAttr(dish?.name || '')}" autofocus>
@@ -507,9 +564,9 @@ document.addEventListener('change', (event) => {
   if (!file) {
     return
   }
-  if (file.size > 5 * 1024 * 1024) {
+  if (file.size > 15 * 1024 * 1024) {
     event.target.value = ''
-    showToast('图片不能超过 5MB')
+    showToast('图片不能超过 15MB')
     return
   }
   const image = document.createElement('img')
