@@ -12,6 +12,10 @@ const state = {
 const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
 const orderRefreshInterval = 10000
 const historyKey = 'order-app'
+const formDraftKey = 'dish-form-draft'
+let formDraft = null
+let draftCoverUrl = null
+let draftStepUrls = []
 
 function navigationState(scrollY = 0) {
   return {
@@ -216,6 +220,63 @@ function markMenuAsDraft() {
   state.confirmed = false
 }
 
+function isFormView() {
+  return state.view === 'dishForm'
+}
+
+function revokeDraftUrls() {
+  if (draftCoverUrl) { URL.revokeObjectURL(draftCoverUrl); draftCoverUrl = null }
+  draftStepUrls.forEach((url) => URL.revokeObjectURL(url))
+  draftStepUrls = []
+}
+
+function saveFormDraft() {
+  if (state.view !== 'dishForm') return
+  const form = document.querySelector('#dish-form')
+  if (!form) return
+  const optionRows = [...form.querySelectorAll('[data-option-row]')]
+  const ingredientRows = [...form.querySelectorAll('[data-ingredient-row]')]
+  const stepRows = [...form.querySelectorAll('[data-step-row]')]
+  formDraft = {
+    editingId: state.editingDish?.id ?? null,
+    name: form.querySelector('[name="name"]')?.value || '',
+    desc: form.querySelector('[name="desc"]')?.value || '',
+    categoryPreset: form.querySelector('[name="categoryPreset"]')?.value || '',
+    customCategory: form.querySelector('[name="customCategory"]')?.value || '',
+    options: optionRows.map((row) => row.querySelector('[name="dishOption"]')?.value || ''),
+    ingredients: ingredientRows.map((row) => ({ name: row.querySelector('[name="ingredientName"]')?.value || '', amount: row.querySelector('[name="ingredientAmount"]')?.value || '' })),
+    steps: stepRows.map((row, index) => ({
+      instruction: row.querySelector('[name="stepInstruction"]')?.value || '',
+      image: row.dataset.draftFile === 'true' ? null : (row.dataset.image || null),
+      file: row.querySelector('[name="stepImage"]')?.files?.[0] || (row.dataset.draftFile === 'true' ? formDraft?.steps?.[index]?.file : null) || null,
+    })),
+    imageFile: form.querySelector('#dish-form-image')?.files?.[0] || formDraft?.imageFile || null,
+    coverRemoved: formDraft?.coverRemoved || false,
+  }
+  try {
+    localStorage.setItem(formDraftKey, JSON.stringify({ ...formDraft, imageFile: null, steps: formDraft.steps.map((step) => ({ instruction: step.instruction, image: step.image, file: null })) }))
+  } catch { /* localStorage 不可用时忽略，草稿仅保留在内存中 */ }
+}
+
+function getFormDraft(editing) {
+  let draft = formDraft
+  if (!draft) {
+    try {
+      const raw = localStorage.getItem(formDraftKey)
+      if (raw) draft = JSON.parse(raw)
+    } catch { /* 忽略损坏的草稿 */ }
+  }
+  if (!draft) return null
+  if ((draft.editingId ?? null) !== (editing?.id ?? null)) return null
+  return draft
+}
+
+function clearFormDraft() {
+  formDraft = null
+  revokeDraftUrls()
+  try { localStorage.removeItem(formDraftKey) } catch { /* 忽略 */ }
+}
+
 function pickCount() { return state.picks.length }
 function escapeHtml(value) { const div = document.createElement('div'); div.textContent = value; return div.innerHTML }
 function escapeAttr(value) { return escapeHtml(String(value)).replaceAll('"', '&quot;').replaceAll("'", '&#39;') }
@@ -378,15 +439,17 @@ function selectDishCategory(value, label) {
   customField.hidden = !isCustom
   customInput.required = isCustom
   setCategoryDropdownOpen(false)
+  saveFormDraft()
   if (isCustom) customInput.focus()
   else trigger.focus()
 }
 
 function stepRow(step = {}, key) {
   const normalizedStep = typeof step === 'string' ? { instruction: step, image: null } : step
+  const hasDraftFile = Boolean(normalizedStep.hasDraftFile)
   const idKey = key || Math.random().toString(36).slice(2, 8)
   const hasImage = Boolean(normalizedStep.image)
-  return `<div class="step-row" data-step-row data-image="${escapeAttr(normalizedStep.image || '')}">
+  return `<div class="step-row" data-step-row data-image="${escapeAttr(hasDraftFile ? '' : (normalizedStep.image || ''))}" data-draft-file="${hasDraftFile ? 'true' : ''}">
     <div class="step-row-heading"><span data-step-number data-step-index="${Number(key) + 1 || 1}">步骤 ${Number(key) + 1 || 1}</span><button class="step-remove" type="button" data-action="remove-step" aria-label="删除这个制作步骤">${icons.trash}</button></div>
     <label class="sr-only" for="step-instruction-${idKey}">步骤说明</label><textarea id="step-instruction-${idKey}" name="stepInstruction" maxlength="1000" placeholder="填写这一步的做法（选填）">${escapeHtml(normalizedStep.instruction || '')}</textarea>
     <input id="step-image-${idKey}" class="upload-input step-image-input" name="stepImage" type="file" accept="image/jpeg,image/png,image/webp,image/gif">
@@ -411,36 +474,59 @@ function updateStepNumbers() {
 function dishFormView() {
   const dish = state.editingDish
   const editing = Boolean(dish)
+  const draft = getFormDraft(dish)
+  revokeDraftUrls()
   const categoryOptions = [...new Set(['招牌推荐', '热菜', '凉菜', '主食', '汤品', '饮品', '甜品', ...dishes.map((dish) => dish.category)].filter(Boolean))]
-  const hasCover = dish?.image && dish.image !== '/icons/icon.svg'
-  const ingredients = dish?.ingredients?.length ? dish.ingredients : [{}]
-  const options = dish?.options?.length ? dish.options : ['标准份']
-  const steps = dish?.steps?.length ? dish.steps : [{}]
-  const selectedCategory = dish?.category || ''
+  const draftCoverFile = draft?.imageFile || null
+  const hasExistingCover = Boolean(dish?.image && dish.image !== '/icons/icon.svg' && !draft?.coverRemoved)
+  if (draftCoverFile) draftCoverUrl = URL.createObjectURL(draftCoverFile)
+  const hasCover = Boolean(draftCoverFile || hasExistingCover)
+  const coverSrc = draftCoverFile ? draftCoverUrl : (hasExistingCover ? dish.image : null)
+  const coverStatus = draftCoverFile ? '已选择图片' : (hasExistingCover ? '更换封面' : '尚未选择图片')
+  const name = draft?.name ?? dish?.name ?? ''
+  const desc = draft?.desc ?? dish?.desc ?? ''
+  const ingredients = draft ? (draft.ingredients.length ? draft.ingredients : [{}]) : (dish?.ingredients?.length ? dish.ingredients : [{}])
+  const options = draft ? (draft.options.filter(Boolean).length ? draft.options : ['标准份']) : (dish?.options?.length ? dish.options : ['标准份'])
+  const rawSteps = draft ? (draft.steps.length ? draft.steps : [{}]) : (dish?.steps?.length ? dish.steps : [{}])
+  const steps = rawSteps.map((step, index) => {
+    if (step.file) {
+      const url = URL.createObjectURL(step.file)
+      draftStepUrls.push(url)
+      return { ...step, image: url, hasDraftFile: true }
+    }
+    return step
+  })
+  const selectedCategory = draft?.categoryPreset || dish?.category || ''
+  const isCustomCategory = selectedCategory === '__custom__'
+  const categoryLabel = isCustomCategory ? '＋ 新增自定义分类' : (selectedCategory ? escapeHtml(selectedCategory) : '请选择分类')
+  const customCategory = draft?.customCategory || ''
   return `<main class="subpage form-page"><header class="subpage-header"><button class="icon-button" data-action="close-form" aria-label="${editing ? '返回菜品详情' : '返回菜单'}">${icons.back}</button><h1>${editing ? '编辑菜品' : '新增菜品'}</h1><button class="icon-button form-save-button" type="submit" form="dish-form" aria-label="${editing ? '保存菜品修改' : '保存菜品'}">${icons.send}</button></header>
     <form id="dish-form" class="dish-form" data-mode="${editing ? 'edit' : 'create'}">
       <input id="dish-form-image" class="upload-input" name="imageFile" type="file" accept="image/jpeg,image/png,image/webp,image/gif" aria-describedby="dish-image-status" aria-required="true">
-      <label class="dish-cover-upload ${hasCover ? 'has-image' : ''}" for="dish-form-image">
-        <span id="dish-image-preview" class="dish-image-preview">${hasCover ? `<img src="${escapeAttr(dish.image)}" alt="当前菜品封面">` : `<span class="dish-cover-placeholder">${icons.upload}<strong>添加菜品封面</strong><small>支持 JPG、PNG、WebP 或 GIF，最大 15MB</small></span>`}</span>
-        <span class="dish-cover-change" id="dish-image-status">${icons.upload} ${hasCover ? '更换封面' : '尚未选择图片'}</span>
-      </label>
-      <label class="sr-only" for="dish-form-name">菜品名称</label><input id="dish-form-name" name="name" maxlength="20" required placeholder="菜品名称（必填）" value="${escapeAttr(dish?.name || '')}" autofocus>
-      <label class="sr-only" for="dish-form-desc">菜品描述</label><textarea id="dish-form-desc" name="desc" maxlength="60" placeholder="菜品描述：介绍食材、口味或特色（选填）">${escapeHtml(dish?.desc || '')}</textarea>
+      <div class="dish-cover-wrap">
+        <label class="dish-cover-upload ${hasCover ? 'has-image' : ''}" for="dish-form-image">
+          <span id="dish-image-preview" class="dish-image-preview">${hasCover ? `<img src="${escapeAttr(coverSrc)}" alt="当前菜品封面">` : `<span class="dish-cover-placeholder">${icons.upload}<strong>添加菜品封面</strong><small>支持 JPG、PNG、WebP 或 GIF，最大 15MB</small></span>`}</span>
+          <span class="dish-cover-change" id="dish-image-status">${icons.upload} ${coverStatus}</span>
+        </label>
+        ${hasCover ? '<button class="dish-cover-clear" type="button" data-action="clear-cover">移除封面</button>' : ''}
+      </div>
+      <label class="sr-only" for="dish-form-name">菜品名称</label><input id="dish-form-name" name="name" maxlength="20" required placeholder="菜品名称（必填）" value="${escapeAttr(name)}" autofocus>
+      <label class="sr-only" for="dish-form-desc">菜品描述</label><textarea id="dish-form-desc" name="desc" maxlength="60" placeholder="菜品描述：介绍食材、口味或特色（选填）">${escapeHtml(desc)}</textarea>
       <section class="category-section" aria-labelledby="category-heading">
         <div class="form-section-copy"><h2 id="category-heading">菜品分类</h2><p>选择分类后，菜品会自动归入首页对应栏目</p></div>
         <div class="category-select-wrap">
           <input type="hidden" name="categoryPreset" value="${escapeAttr(selectedCategory)}">
           <button id="dish-form-category" class="category-select-trigger ${selectedCategory ? '' : 'is-placeholder'}" type="button" data-action="toggle-category-dropdown" aria-haspopup="listbox" aria-expanded="false" aria-controls="dish-category-options">
-            <span data-category-label>${selectedCategory ? escapeHtml(selectedCategory) : '请选择分类'}</span>${icons.chevronDown}
+            <span data-category-label>${categoryLabel}</span>${icons.chevronDown}
           </button>
           <div id="dish-category-options" class="category-select-options" role="listbox" aria-label="菜品分类" aria-hidden="true">
             ${categoryOptions.map((category) => `<button type="button" role="option" data-action="select-category" data-value="${escapeAttr(category)}" aria-selected="${selectedCategory === category}">${escapeHtml(category)}</button>`).join('')}
             <button class="category-option-custom" type="button" role="option" data-action="select-category" data-value="__custom__" aria-selected="false">＋ 新增自定义分类</button>
           </div>
         </div>
-        <div class="custom-category-field" hidden>
+        <div class="custom-category-field" ${isCustomCategory ? '' : 'hidden'}>
           <label for="dish-form-custom-category">自定义分类名称</label>
-          <input id="dish-form-custom-category" name="customCategory" maxlength="10" placeholder="最多 10 个字" autocomplete="off">
+          <input id="dish-form-custom-category" name="customCategory" maxlength="10" placeholder="最多 10 个字" autocomplete="off" value="${escapeAttr(customCategory)}">
         </div>
       </section>
       <section class="options-section" aria-labelledby="options-heading">
@@ -521,6 +607,7 @@ document.addEventListener('click', async (event) => {
     list.insertAdjacentHTML('beforeend', optionRow('', key))
     updateOptionState()
     list.lastElementChild.querySelector('input')?.focus()
+    saveFormDraft()
     return
   }
   if (action === 'remove-option') {
@@ -535,6 +622,7 @@ document.addEventListener('click', async (event) => {
       row.remove()
       updateOptionState()
     }
+    saveFormDraft()
     return
   }
   if (action === 'add-ingredient') {
@@ -543,6 +631,7 @@ document.addEventListener('click', async (event) => {
     const key = Date.now().toString(36) + Math.random().toString(36).slice(2, 6)
     list.insertAdjacentHTML('beforeend', ingredientRow({}, key))
     list.lastElementChild.querySelector('input')?.focus()
+    saveFormDraft()
     return
   }
   if (action === 'remove-ingredient') {
@@ -555,6 +644,7 @@ document.addEventListener('click', async (event) => {
     } else {
       row.remove()
     }
+    saveFormDraft()
     return
   }
   if (action === 'add-step') {
@@ -564,6 +654,7 @@ document.addEventListener('click', async (event) => {
     list.insertAdjacentHTML('beforeend', stepRow({}, key))
     updateStepNumbers()
     list.lastElementChild.querySelector('textarea')?.focus()
+    saveFormDraft()
     return
   }
   if (action === 'remove-step') {
@@ -573,6 +664,7 @@ document.addEventListener('click', async (event) => {
     if (list.children.length === 1) {
       row.querySelector('textarea').value = ''
       row.dataset.image = ''
+      row.dataset.draftFile = ''
       row.querySelector('.step-image-preview').innerHTML = `${icons.upload}<span>添加图片 <small>选填</small></span>`
       row.querySelector('.step-image-upload').classList.remove('has-image')
       row.querySelector('.step-image-clear')?.remove()
@@ -581,15 +673,28 @@ document.addEventListener('click', async (event) => {
       row.remove()
       updateStepNumbers()
     }
+    saveFormDraft()
     return
   }
   if (action === 'clear-step-image') {
     const row = button.closest('[data-step-row]')
     row.dataset.image = ''
+    row.dataset.draftFile = ''
     row.querySelector('.step-image-input').value = ''
     row.querySelector('.step-image-preview').innerHTML = `${icons.upload}<span>添加图片 <small>选填</small></span>`
     row.querySelector('.step-image-upload').classList.remove('has-image')
     button.remove()
+    saveFormDraft()
+    return
+  }
+  if (action === 'clear-cover') {
+    const input = document.querySelector('#dish-form-image')
+    if (input) input.value = ''
+    if (formDraft) formDraft.imageFile = null
+    formDraft = { ...(formDraft || {}), coverRemoved: true }
+    render()
+    saveFormDraft()
+    showToast('已移除封面')
     return
   }
   if (action === 'retry-dishes') { await loadDishes(); return }
@@ -712,8 +817,9 @@ document.addEventListener('submit', async (event) => {
   event.preventDefault()
   const editingDish = state.editingDish
   const formData = new FormData(event.target)
-  const imageFile = formData.get('imageFile')
-  const hasExistingCover = editingDish?.image && editingDish.image !== '/icons/icon.svg'
+  const rawImageFile = formData.get('imageFile')
+  const imageFile = rawImageFile?.size ? rawImageFile : (formDraft?.imageFile || null)
+  const hasExistingCover = Boolean(editingDish?.image && editingDish.image !== '/icons/icon.svg' && !formDraft?.coverRemoved)
   if (!imageFile?.size && !hasExistingCover) {
     showToast('请添加菜品封面')
     document.querySelector('.dish-cover-upload')?.focus()
@@ -755,10 +861,11 @@ document.addEventListener('submit', async (event) => {
   }
   const stepRows = [...event.target.querySelectorAll('[data-step-row]')]
   const steps = []
-  for (const row of stepRows) {
+  for (const [stepIndex, row] of stepRows.entries()) {
     const instruction = row.querySelector('[name="stepInstruction"]').value.trim()
-    const stepImageFile = row.querySelector('[name="stepImage"]').files[0]
-    let stepImage = row.dataset.image || null
+    const draftStepFile = row.dataset.draftFile === 'true' ? formDraft?.steps?.[stepIndex]?.file : null
+    const stepImageFile = row.querySelector('[name="stepImage"]').files[0] || draftStepFile || null
+    let stepImage = row.dataset.draftFile === 'true' ? null : (row.dataset.image || null)
     if (!instruction && !stepImageFile && !stepImage) continue
     if (stepImageFile) {
       try {
@@ -804,12 +911,14 @@ document.addEventListener('submit', async (event) => {
   state.category = dish.category
   state.search = ''
   state.editingDish = null
+  clearFormDraft()
   navigate('menu', { replace: true })
   showToast(`${editingDish ? '已更新' : '已新增'}「${dish.name}」`)
 })
 
 document.addEventListener('input', (event) => {
   if (event.target.id === 'dish-search') { state.search = event.target.value; const position = event.target.selectionStart; render(); const input = document.querySelector('#dish-search'); input.focus(); input.setSelectionRange(position, position) }
+  if (event.target.closest('#dish-form')) saveFormDraft()
 })
 
 document.addEventListener('change', (event) => {
@@ -832,6 +941,7 @@ document.addEventListener('change', (event) => {
     if (!row.querySelector('.step-image-clear')) {
       row.insertAdjacentHTML('beforeend', '<button class="step-image-clear" type="button" data-action="clear-step-image">移除图片</button>')
     }
+    saveFormDraft()
     return
   }
   if (event.target.id !== 'dish-form-image') return
@@ -853,6 +963,8 @@ document.addEventListener('change', (event) => {
   preview.replaceChildren(image)
   preview.closest('.dish-cover-upload').classList.add('has-image')
   if (status) status.textContent = file.name
+  if (formDraft) formDraft.coverRemoved = false
+  saveFormDraft()
 })
 
 registerSW({ onOfflineReady: () => showToast('应用已可离线使用'), onNeedRefresh: () => showToast('发现新版本，将自动更新') })
@@ -872,14 +984,15 @@ render()
 loadDishes()
 loadLatestOrder({ force: true })
 window.setInterval(() => {
-  if (!document.hidden) loadLatestOrder({ notify: true })
+  if (!document.hidden && !isFormView()) loadLatestOrder({ notify: true })
 }, orderRefreshInterval)
 window.addEventListener('online', () => {
+  if (isFormView()) return
   loadDishes()
   loadLatestOrder({ notify: true })
 })
 document.addEventListener('visibilitychange', () => {
-  if (!document.hidden) {
+  if (!document.hidden && !isFormView()) {
     loadDishes()
     loadLatestOrder({ notify: true })
   }
