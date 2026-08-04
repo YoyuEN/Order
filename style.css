@@ -845,14 +845,46 @@ body.image-preview-open {
   content: counter(recipe-step);
 }
 
-.recipe-steps img {
+.recipe-step-image {
+  position: relative;
   grid-column: 1 / -1;
   display: block;
   width: 100%;
-  max-height: 280px;
   margin-top: 9px;
-  object-fit: cover;
+  padding: 0;
+  overflow: hidden;
+  background: none;
+  border: 0;
   border-radius: 8px;
+  cursor: zoom-in;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.recipe-step-image img {
+  display: block;
+  width: 100%;
+  max-height: 280px;
+  object-fit: cover;
+  transition: filter .2s ease;
+}
+
+.recipe-step-image:hover img,
+.recipe-step-image:focus-visible img {
+  filter: brightness(.94);
+}
+
+.recipe-step-image svg {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  width: 26px;
+  height: 26px;
+  padding: 5px;
+  color: white;
+  background: rgba(30, 28, 25, .62);
+  border-radius: 50%;
+  pointer-events: none;
+  backdrop-filter: blur(8px);
 }
 
 .recipe-step-content {

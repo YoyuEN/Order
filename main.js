@@ -6,7 +6,7 @@ let dishes = []
 let dishesStatus = 'loading'
 const state = {
   category: '全部', search: '', picks: [],
-  selectedDish: null, editingDish: null, selectedOption: '', note: '', view: 'menu', orderNumber: '', confirmed: false, confirmedCount: 0, imagePreviewOpen: false, showSuccessModal: false, moreMenuOpen: false,
+  selectedDish: null, editingDish: null, selectedOption: '', note: '', view: 'menu', orderNumber: '', confirmed: false, confirmedCount: 0, imagePreviewOpen: false, imagePreviewSrc: '', imagePreviewAlt: '', imagePreviewReturnSelector: null, showSuccessModal: false, moreMenuOpen: false,
 }
 
 const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
@@ -209,6 +209,7 @@ const icons = {
   edit: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>',
   trash: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14Z"/></svg>',
   chevronDown: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg>',
+  zoom: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M10 4a6 6 0 1 1 0 12 6 6 0 0 1 0-12Zm6.3 10.9 4.5 4.5-1.4 1.4-4.5-4.5a7 7 0 1 1 1.4-1.4ZM9.2 7v6M6.2 10h6"/></svg>',
 }
 
 function markMenuAsDraft() {
@@ -271,20 +272,31 @@ function detailView() {
   const ingredients = (dish.ingredients || []).filter((ingredient) => ingredient?.name || ingredient?.amount)
   const steps = (dish.steps || []).map((step) => typeof step === 'string' ? { instruction: step, image: null } : step)
   const ingredientList = ingredients.length ? `<section class="detail-ingredients" aria-labelledby="detail-ingredients-heading"><h2 id="detail-ingredients-heading">用料</h2><dl>${ingredients.map((ingredient) => `<div><dt>${escapeHtml(ingredient.name || '')}</dt><dd>${escapeHtml(ingredient.amount || '')}</dd></div>`).join('')}</dl></section>` : ''
-  const recipe = steps.length ? `<section class="recipe-section" aria-labelledby="recipe-heading"><h2 id="recipe-heading">制作步骤</h2><ol class="recipe-steps">${steps.map((step) => `<li><div class="recipe-step-content"><b>${escapeHtml(step.instruction)}</b></div>${step.image ? `<img src="${escapeAttr(step.image)}" alt="" loading="lazy">` : ''}</li>`).join('')}</ol></section>` : ''
+  const recipe = steps.length ? `<section class="recipe-section" aria-labelledby="recipe-heading"><h2 id="recipe-heading">制作步骤</h2><ol class="recipe-steps">${steps.map((step, stepIndex) => `<li><div class="recipe-step-content"><b>${escapeHtml(step.instruction)}</b></div>${step.image ? `<button class="recipe-step-image" type="button" data-action="preview-step-image" data-step-preview-index="${stepIndex}" data-image-src="${escapeAttr(step.image)}" aria-label="放大预览步骤图片">${icons.zoom}<img src="${escapeAttr(step.image)}" alt="" loading="lazy"></button>` : ''}</li>`).join('')}</ol></section>` : ''
   return `<main class="detail-view"><button class="icon-button floating-back" data-action="close" aria-label="返回菜单">${icons.back}</button><button class="icon-button floating-more" data-action="toggle-more-menu" aria-label="更多操作" aria-expanded="${state.moreMenuOpen}">${icons.more}</button>${state.moreMenuOpen ? `<div class="more-menu-dropdown" role="menu" aria-label="菜品管理"><button class="more-menu-item" data-action="edit-dish" role="menuitem">${icons.edit}<span>编辑菜品</span></button><button class="more-menu-item more-menu-item--danger" data-action="delete-dish" role="menuitem">${icons.trash}<span>删除菜品</span></button></div>` : ''}${state.moreMenuOpen ? '<button class="more-menu-backdrop" data-action="close-more-menu" aria-label="关闭菜单"></button>' : ''}<button class="dish-image-preview-button" data-action="preview-image" aria-label="放大预览${escapeAttr(dish.name)}图片">${imageMarkup(dish, true)}<span class="preview-hint" aria-hidden="true">点击查看大图</span></button><section class="detail-sheet"><p class="eyebrow">${escapeHtml(dish.category)}</p><h1>${escapeHtml(dish.name)}</h1><p class="detail-desc">${escapeHtml(dish.desc)}</p><div class="detail-meta"><strong>今天就吃这个</strong></div>${ingredientList}${recipe}<fieldset><legend>选择规格 <em>必选</em></legend><div class="option-list">${dish.options.map((option, index) => `<label><input type="radio" name="option" value="${escapeAttr(option)}" ${state.selectedOption === option || (!state.selectedOption && index === 0) ? 'checked' : ''}><span>${escapeHtml(option)}</span></label>`).join('')}</div></fieldset><label class="note-label" for="dish-note">口味备注 <span>选填</span></label><textarea id="dish-note" maxlength="50" placeholder="例如：不要香菜、少盐">${escapeHtml(state.note)}</textarea><button class="primary-button" data-action="confirm-add">${state.picks.some((item) => item.dishId === dish.id) ? '更新选择' : '就点这道菜'}</button></section></main>`
 }
 
+function openImagePreview(src, alt, returnSelector = '[data-action="preview-image"]') {
+  state.imagePreviewSrc = src
+  state.imagePreviewAlt = alt
+  state.imagePreviewReturnSelector = returnSelector
+  state.imagePreviewOpen = true
+  render()
+}
+
 function imagePreview() {
-  if (!state.imagePreviewOpen || !state.selectedDish) return ''
-  const dish = state.selectedDish
-  return `<div class="image-lightbox" role="dialog" aria-modal="true" aria-label="${escapeAttr(dish.name)}图片预览" data-action="close-image-preview"><button class="image-lightbox-close" data-action="close-image-preview" aria-label="关闭图片预览">${icons.close}</button><img src="${escapeAttr(dish.image)}" alt="${escapeAttr(dish.name)}的大图" data-lightbox-image></div>`
+  if (!state.imagePreviewOpen || !state.imagePreviewSrc) return ''
+  return `<div class="image-lightbox" role="dialog" aria-modal="true" aria-label="${escapeAttr(state.imagePreviewAlt)}图片预览" data-action="close-image-preview"><button class="image-lightbox-close" data-action="close-image-preview" aria-label="关闭图片预览">${icons.close}</button><img src="${escapeAttr(state.imagePreviewSrc)}" alt="${escapeAttr(state.imagePreviewAlt)}的大图" data-lightbox-image></div>`
 }
 
 function closeImagePreview() {
   state.imagePreviewOpen = false
+  const returnSelector = state.imagePreviewReturnSelector
+  state.imagePreviewSrc = ''
+  state.imagePreviewAlt = ''
+  state.imagePreviewReturnSelector = null
   render()
-  document.querySelector('[data-action="preview-image"]')?.focus()
+  document.querySelector(returnSelector || '[data-action="preview-image"]')?.focus()
 }
 
 function pickedContent(desktop = false) {
@@ -497,7 +509,8 @@ document.addEventListener('click', async (event) => {
     selectDishCategory(button.dataset.value, button.textContent.trim())
     return
   }
-  if (action === 'preview-image') { state.imagePreviewOpen = true; render(); return }
+  if (action === 'preview-image') { if (state.selectedDish?.image) openImagePreview(state.selectedDish.image, `${state.selectedDish.name}图片`, '[data-action="preview-image"]'); return }
+  if (action === 'preview-step-image') { const src = button.dataset.imageSrc; if (src) openImagePreview(src, '步骤图片', `[data-step-preview-index="${button.dataset.stepPreviewIndex}"]`); return }
   if (action === 'close-image-preview') { closeImagePreview(); return }
   if (action === 'toggle-more-menu') { state.moreMenuOpen = !state.moreMenuOpen; render(); return }
   if (action === 'close-more-menu') { state.moreMenuOpen = false; render(); return }
