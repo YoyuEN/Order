@@ -596,6 +596,8 @@ body.image-preview-open {
   place-items: center;
   background: rgba(18, 17, 15, .94);
   animation: lightbox-in .18s ease-out;
+  touch-action: none;
+  overscroll-behavior: none;
 }
 
 .image-lightbox img {
@@ -605,6 +607,48 @@ body.image-preview-open {
   object-fit: contain;
   border-radius: 10px;
   box-shadow: 0 18px 60px rgba(0, 0, 0, .36);
+  will-change: transform;
+  transition: transform .15s ease-out;
+  user-select: none;
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+}
+
+.image-lightbox img.gesturing {
+  transition: none;
+}
+
+.image-lightbox img.zoomed {
+  border-radius: 0;
+  cursor: grab;
+}
+
+.image-lightbox img.zoomed.grabbing {
+  cursor: grabbing;
+}
+
+.image-lightbox-reset {
+  position: absolute;
+  z-index: 1;
+  bottom: calc(20px + env(safe-area-inset-bottom));
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 16px;
+  color: white;
+  background: rgba(255, 255, 255, .14);
+  border: 1px solid rgba(255, 255, 255, .24);
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+}
+
+.image-lightbox-reset[hidden] {
+  display: none;
 }
 
 .image-lightbox-close {

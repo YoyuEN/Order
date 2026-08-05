@@ -347,7 +347,7 @@ function openImagePreview(src, alt, returnSelector = '[data-action="preview-imag
 
 function imagePreview() {
   if (!state.imagePreviewOpen || !state.imagePreviewSrc) return ''
-  return `<div class="image-lightbox" role="dialog" aria-modal="true" aria-label="${escapeAttr(state.imagePreviewAlt)}图片预览" data-action="close-image-preview"><button class="image-lightbox-close" data-action="close-image-preview" aria-label="关闭图片预览">${icons.close}</button><img src="${escapeAttr(state.imagePreviewSrc)}" alt="${escapeAttr(state.imagePreviewAlt)}的大图" data-lightbox-image></div>`
+  return `<div class="image-lightbox" role="dialog" aria-modal="true" aria-label="${escapeAttr(state.imagePreviewAlt)}图片预览" data-action="close-image-preview"><button class="image-lightbox-close" data-action="close-image-preview" aria-label="关闭图片预览">${icons.close}</button><img src="${escapeAttr(state.imagePreviewSrc)}" alt="${escapeAttr(state.imagePreviewAlt)}的大图" data-lightbox-image><button class="image-lightbox-reset" data-action="reset-lightbox-zoom" hidden aria-label="还原缩放">${icons.zoom}<span>还原</span></button></div>`
 }
 
 function closeImagePreview() {
@@ -356,8 +356,152 @@ function closeImagePreview() {
   state.imagePreviewSrc = ''
   state.imagePreviewAlt = ''
   state.imagePreviewReturnSelector = null
+  resetLightboxZoom()
   render()
   document.querySelector(returnSelector || '[data-action="preview-image"]')?.focus()
+}
+
+// —— 图片预览缩放（捏合 / 拖动 / 双击），保证各平台（含 Android WebView、微信内置浏览器）行为一致 ——
+const lightboxGesture = { scale: 1, tx: 0, ty: 0, mode: 'none', pointers: new Map(), startX: 0, startY: 0, startTx: 0, startTy: 0, startDist: 0, startScale: 1, moved: false, suppressClick: false, lastTap: 0, lastTapX: 0, lastTapY: 0 }
+const LIGHTBOX_MAX_SCALE = 4
+
+function lightboxImageEl() {
+  return document.querySelector('.image-lightbox img[data-lightbox-image]')
+}
+
+function applyLightboxTransform(gesturing = false) {
+  const img = lightboxImageEl()
+  if (!img) return
+  const g = lightboxGesture
+  img.classList.toggle('gesturing', gesturing)
+  if (g.scale <= 1.001 && g.tx === 0 && g.ty === 0) {
+    img.style.transform = ''
+    img.classList.remove('zoomed', 'grabbing')
+  } else {
+    img.style.transform = `translate3d(${g.tx}px, ${g.ty}px, 0) scale(${g.scale})`
+    img.classList.add('zoomed')
+  }
+  const resetBtn = document.querySelector('.image-lightbox-reset')
+  if (resetBtn) resetBtn.hidden = g.scale <= 1.001 && g.tx === 0 && g.ty === 0
+}
+
+function resetLightboxZoom() {
+  const g = lightboxGesture
+  g.scale = 1
+  g.tx = 0
+  g.ty = 0
+  g.mode = 'none'
+  g.pointers.clear()
+  g.suppressClick = false
+  applyLightboxTransform()
+}
+
+function clampLightboxTransform() {
+  const g = lightboxGesture
+  if (g.scale <= 1) { g.scale = 1; g.tx = 0; g.ty = 0; return }
+  const img = lightboxImageEl()
+  if (!img) return
+  const rect = img.getBoundingClientRect()
+  const baseW = rect.width / g.scale
+  const baseH = rect.height / g.scale
+  const maxTx = Math.max(0, (baseW * g.scale - window.innerWidth) / 2)
+  const maxTy = Math.max(0, (baseH * g.scale - window.innerHeight) / 2)
+  g.tx = Math.min(maxTx, Math.max(-maxTx, g.tx))
+  g.ty = Math.min(maxTy, Math.max(-maxTy, g.ty))
+}
+
+function onLightboxPointerDown(event) {
+  if (!state.imagePreviewOpen) return
+  if (!event.target.closest('.image-lightbox')) return
+  if (event.target.closest('.image-lightbox-close, .image-lightbox-reset')) return
+  const lightbox = event.target.closest('.image-lightbox')
+  const g = lightboxGesture
+  try { lightbox.setPointerCapture(event.pointerId) } catch { /* 部分浏览器不支持 */ }
+  g.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
+  if (g.pointers.size === 1) {
+    g.mode = 'drag'
+    g.startX = event.clientX
+    g.startY = event.clientY
+    g.startTx = g.tx
+    g.startTy = g.ty
+    g.moved = false
+    if (g.scale > 1) lightboxImageEl()?.classList.add('grabbing')
+  } else if (g.pointers.size === 2) {
+    g.mode = 'pinch'
+    const [p1, p2] = [...g.pointers.values()]
+    g.startDist = Math.hypot(p1.x - p2.x, p1.y - p2.y) || 1
+    g.startScale = g.scale
+    g.startTx = g.tx
+    g.startTy = g.ty
+    lightboxImageEl()?.classList.remove('grabbing')
+  }
+}
+
+function onLightboxPointerMove(event) {
+  const g = lightboxGesture
+  if (!g.pointers.has(event.pointerId)) return
+  event.preventDefault()
+  const prev = g.pointers.get(event.pointerId)
+  if (Math.abs(event.clientX - prev.x) > 2 || Math.abs(event.clientY - prev.y) > 2) g.moved = true
+  g.pointers.set(event.pointerId, { x: event.clientX, y: event.clientY })
+  if (g.mode === 'pinch' && g.pointers.size === 2) {
+    const [p1, p2] = [...g.pointers.values()]
+    const dist = Math.hypot(p1.x - p2.x, p1.y - p2.y) || 1
+    const ratio = dist / g.startDist
+    const nextScale = Math.min(LIGHTBOX_MAX_SCALE, Math.max(1, g.startScale * ratio))
+    const scaleRatio = nextScale / g.scale
+    g.scale = nextScale
+    g.tx = g.tx * scaleRatio
+    g.ty = g.ty * scaleRatio
+    applyLightboxTransform(true)
+  } else if (g.mode === 'drag' && g.scale > 1) {
+    g.tx = g.startTx + (event.clientX - g.startX)
+    g.ty = g.startTy + (event.clientY - g.startY)
+    applyLightboxTransform(true)
+  }
+}
+
+function onLightboxPointerUp(event) {
+  const g = lightboxGesture
+  if (!g.pointers.has(event.pointerId)) return
+  g.pointers.delete(event.pointerId)
+  if (g.pointers.size === 1) {
+    const [p] = [...g.pointers.values()]
+    g.mode = 'drag'
+    g.startX = p.x
+    g.startY = p.y
+    g.startTx = g.tx
+    g.startTy = g.ty
+  } else if (g.pointers.size === 0) {
+    if (g.mode === 'pinch' && g.moved) g.suppressClick = true
+    g.mode = 'none'
+  }
+  clampLightboxTransform()
+  applyLightboxTransform()
+}
+
+function onLightboxImageClick(event) {
+  if (!state.imagePreviewOpen) return
+  if (!event.target.closest('.image-lightbox img')) return
+  const g = lightboxGesture
+  const now = Date.now()
+  const dt = now - g.lastTap
+  const dist = Math.hypot(event.clientX - g.lastTapX, event.clientY - g.lastTapY)
+  g.lastTap = now
+  g.lastTapX = event.clientX
+  g.lastTapY = event.clientY
+  if (dt > 0 && dt < 300 && dist < 40) {
+    g.lastTap = 0
+    if (g.scale > 1.01) {
+      resetLightboxZoom()
+    } else {
+      g.scale = 2.5
+      g.tx = 0
+      g.ty = 0
+      clampLightboxTransform()
+      applyLightboxTransform()
+    }
+  }
 }
 
 function pickedContent(desktop = false) {
@@ -616,6 +760,7 @@ document.addEventListener('click', async (event) => {
   if (action === 'preview-image') { if (state.selectedDish?.image) openImagePreview(state.selectedDish.image, `${state.selectedDish.name}图片`, '[data-action="preview-image"]'); return }
   if (action === 'preview-step-image') { const src = button.dataset.imageSrc; if (src) openImagePreview(src, '步骤图片', `[data-step-preview-index="${button.dataset.stepPreviewIndex}"]`); return }
   if (action === 'close-image-preview') { closeImagePreview(); return }
+  if (action === 'reset-lightbox-zoom') { resetLightboxZoom(); return }
   if (action === 'toggle-more-menu') { state.moreMenuOpen = !state.moreMenuOpen; render(); return }
   if (action === 'close-more-menu') { state.moreMenuOpen = false; render(); return }
   if (action === 'add-option') {
@@ -810,10 +955,19 @@ document.addEventListener('click', async (event) => {
 })
 
 document.addEventListener('click', (event) => {
-  if (event.target.classList.contains('image-lightbox')) closeImagePreview()
+  if (event.target.classList.contains('image-lightbox')) {
+    if (lightboxGesture.suppressClick) { lightboxGesture.suppressClick = false; return }
+    closeImagePreview()
+  }
   if (event.target.closest('.modal-overlay') && !event.target.closest('.success-modal')) closeSuccessModal()
   if (!event.target.closest('.category-select-wrap')) setCategoryDropdownOpen(false)
 })
+
+document.addEventListener('pointerdown', onLightboxPointerDown, { passive: false })
+document.addEventListener('pointermove', onLightboxPointerMove, { passive: false })
+document.addEventListener('pointerup', onLightboxPointerUp, { passive: false })
+document.addEventListener('pointercancel', onLightboxPointerUp, { passive: false })
+document.addEventListener('click', onLightboxImageClick)
 
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && state.imagePreviewOpen) closeImagePreview()
