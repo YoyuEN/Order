@@ -17,7 +17,7 @@ export default defineConfig({
         short_name: '乐梵小灶',
         description: '手机扫码点菜与本地订单管理',
         theme_color: '#d94b32',
-        background_color: '#f7f4ee',
+        background_color: '#ffffff',
         display: 'standalone',
         orientation: 'portrait-primary',
         start_url: '/',

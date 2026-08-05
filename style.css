@@ -3,12 +3,12 @@
 :root {
   font-family: 'Noto Sans SC', system-ui, sans-serif;
   color: #292723;
-  background: #f7f4ee;
+  background: #ffffff;
   font-synthesis: none;
   --red: #d94b32;
   --red-dark: #b93625;
-  --cream: #fffdf8;
-  --paper: #f7f4ee;
+  --cream: #ffffff;
+  --paper: #ffffff;
   --ink: #292723;
   --muted: #817d74;
   --line: #e6e0d5;
@@ -135,7 +135,7 @@ svg {
   left: 15px;
   top: 13px;
   width: 20px;
-  color: #918b82;
+  color: #9a958c;
 }
 
 .search-wrap input {
@@ -143,15 +143,16 @@ svg {
   height: 47px;
   padding: 0 44px;
   color: var(--ink);
-  background: #eeebe4;
-  border: 1px solid transparent;
+  background: var(--cream);
+  border: 1px solid #e3e0da;
   border-radius: 13px;
   outline: none;
+  transition: border-color .15s ease, box-shadow .15s ease;
 }
 
 .search-wrap input:focus {
-  background: var(--cream);
-  border-color: #d9c7bb;
+  border-color: var(--red);
+  box-shadow: 0 0 0 3px rgba(217, 75, 50, .12);
 }
 
 .categories {
@@ -421,7 +422,7 @@ svg {
   grid-template-columns: repeat(5, 1fr);
   align-items: center;
   padding: 6px 0 calc(9px + env(safe-area-inset-bottom));
-  background: rgba(255, 253, 248, .96);
+  background: rgba(255, 255, 255, .96);
   border-top: 1px solid var(--line);
   box-shadow: 0 -8px 25px rgba(66, 52, 39, .08);
   backdrop-filter: blur(14px);
