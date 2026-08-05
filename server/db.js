@@ -93,6 +93,12 @@ export async function initializeDatabase() {
       CONSTRAINT fk_order_items_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
       CONSTRAINT fk_order_items_dish FOREIGN KEY (dish_id) REFERENCES dishes(id) ON DELETE SET NULL
     ) ENGINE=InnoDB`)
+    await connection.query(`CREATE TABLE IF NOT EXISTS favorites (
+      dish_id BIGINT UNSIGNED NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (dish_id),
+      CONSTRAINT fk_favorites_dish FOREIGN KEY (dish_id) REFERENCES dishes(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB`)
     await connection.query(`CREATE TABLE IF NOT EXISTS app_metadata (
       metadata_key VARCHAR(100) NOT NULL,
       metadata_value VARCHAR(500) NOT NULL,
@@ -146,7 +152,8 @@ async function seedMissingDefaultDishes(connection) {
 
 export async function listDishes() {
   const [dishRows] = await pool.query(
-    `SELECT id, category, name, description, sales, spicy, badge, image_url, sold_out, is_custom
+    `SELECT id, category, name, description, sales, spicy, badge, image_url, sold_out, is_custom,
+           EXISTS(SELECT 1 FROM favorites f WHERE f.dish_id = dishes.id) AS favorite
      FROM dishes ORDER BY id`,
   )
   const [optionRows] = await pool.query(
@@ -180,7 +187,7 @@ export async function listDishes() {
     id: Number(row.id), category: row.category, name: row.name, desc: row.description,
     sales: row.sales, spicy: row.spicy, badge: row.badge || undefined,
     image: row.image_url || '/icons/icon.svg', soldOut: Boolean(row.sold_out),
-    custom: Boolean(row.is_custom), options: optionsByDish.get(String(row.id)) || ['标准份'],
+    custom: Boolean(row.is_custom), favorite: Boolean(row.favorite), options: optionsByDish.get(String(row.id)) || ['标准份'],
     ingredients: ingredientsByDish.get(String(row.id)) || [],
     steps: stepsByDish.get(String(row.id)) || [],
   }))
@@ -188,7 +195,8 @@ export async function listDishes() {
 
 export async function getDish(id, connection = pool) {
   const [[row]] = await connection.execute(
-    `SELECT id, category, name, description, sales, spicy, badge, image_url, sold_out, is_custom
+    `SELECT id, category, name, description, sales, spicy, badge, image_url, sold_out, is_custom,
+           EXISTS(SELECT 1 FROM favorites f WHERE f.dish_id = dishes.id) AS favorite
      FROM dishes WHERE id = ?`,
     [id],
   )
@@ -209,7 +217,7 @@ export async function getDish(id, connection = pool) {
     id: Number(row.id), category: row.category, name: row.name, desc: row.description,
     sales: row.sales, spicy: row.spicy, badge: row.badge || undefined,
     image: row.image_url || '/icons/icon.svg', soldOut: Boolean(row.sold_out),
-    custom: Boolean(row.is_custom), options: optionRows.map((option) => option.option_name),
+    custom: Boolean(row.is_custom), favorite: Boolean(row.favorite), options: optionRows.map((option) => option.option_name),
     ingredients: ingredientRows.map((ingredient) => ({
       name: ingredient.ingredient_name,
       amount: ingredient.amount,
@@ -252,6 +260,7 @@ export async function createDish(dish) {
       id: result.insertId,
       sales: 0,
       custom: true,
+      favorite: false,
       options: dish.options || ['标准份'],
       ingredients: dish.ingredients || [],
       steps: dish.steps || [],
@@ -314,6 +323,14 @@ export async function updateDish(id, dish) {
 export async function deleteDish(id) {
   const [result] = await pool.execute('DELETE FROM dishes WHERE id = ?', [id])
   return result.affectedRows > 0
+}
+
+export async function setFavorite(dishId, favorite) {
+  if (favorite) {
+    await pool.execute('INSERT IGNORE INTO favorites (dish_id) VALUES (?)', [dishId])
+  } else {
+    await pool.execute('DELETE FROM favorites WHERE dish_id = ?', [dishId])
+  }
 }
 
 export async function createOrder(order) {

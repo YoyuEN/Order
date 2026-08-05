@@ -6,7 +6,7 @@ import { mkdir } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import multer from 'multer'
 import { z } from 'zod'
-import { clearCurrentOrder, createDish, createOrder, deleteDish, getDish, getLatestOrder, initializeDatabase, listDishes, pool, updateDish } from './db.js'
+import { clearCurrentOrder, createDish, createOrder, deleteDish, getDish, getLatestOrder, initializeDatabase, listDishes, pool, setFavorite, updateDish } from './db.js'
 
 const app = express()
 const port = Number(process.env.PORT || 3001)
@@ -164,6 +164,24 @@ app.delete('/api/dishes/:id', async (request, response, next) => {
       return
     }
     response.status(204).end()
+  } catch (error) {
+    next(error)
+  }
+})
+
+const favoriteSchema = z.object({ favorite: z.boolean() })
+
+app.put('/api/dishes/:id/favorite', async (request, response, next) => {
+  try {
+    const dishId = idSchema.parse(request.params.id)
+    const { favorite } = favoriteSchema.parse(request.body)
+    const dish = await getDish(dishId)
+    if (!dish) {
+      response.status(404).json({ error: '菜品不存在' })
+      return
+    }
+    await setFavorite(dishId, favorite)
+    response.json({ id: dishId, favorite })
   } catch (error) {
     next(error)
   }
