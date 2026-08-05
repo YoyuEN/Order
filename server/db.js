@@ -99,6 +99,12 @@ export async function initializeDatabase() {
       PRIMARY KEY (dish_id),
       CONSTRAINT fk_favorites_dish FOREIGN KEY (dish_id) REFERENCES dishes(id) ON DELETE CASCADE
     ) ENGINE=InnoDB`)
+    await connection.query(`CREATE TABLE IF NOT EXISTS messages (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      content VARCHAR(500) NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id), INDEX idx_messages_created_at (created_at)
+    ) ENGINE=InnoDB`)
     await connection.query(`CREATE TABLE IF NOT EXISTS app_metadata (
       metadata_key VARCHAR(100) NOT NULL,
       metadata_value VARCHAR(500) NOT NULL,
@@ -331,6 +337,29 @@ export async function setFavorite(dishId, favorite) {
   } else {
     await pool.execute('DELETE FROM favorites WHERE dish_id = ?', [dishId])
   }
+}
+
+export async function listMessages() {
+  const [rows] = await pool.query(
+    'SELECT id, content, created_at FROM messages ORDER BY id DESC LIMIT 200',
+  )
+  return rows.map((row) => ({
+    id: Number(row.id),
+    content: row.content,
+    createdAt: row.created_at,
+  }))
+}
+
+export async function createMessage(content) {
+  const [result] = await pool.execute(
+    'INSERT INTO messages (content) VALUES (?)',
+    [content],
+  )
+  const [[row]] = await pool.execute(
+    'SELECT id, content, created_at FROM messages WHERE id = ?',
+    [result.insertId],
+  )
+  return { id: Number(row.id), content: row.content, createdAt: row.created_at }
 }
 
 export async function createOrder(order) {

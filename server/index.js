@@ -6,7 +6,7 @@ import { mkdir } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import multer from 'multer'
 import { z } from 'zod'
-import { clearCurrentOrder, createDish, createOrder, deleteDish, getDish, getLatestOrder, initializeDatabase, listDishes, pool, setFavorite, updateDish } from './db.js'
+import { clearCurrentOrder, createDish, createMessage, createOrder, deleteDish, getDish, getLatestOrder, initializeDatabase, listDishes, listMessages, pool, setFavorite, updateDish } from './db.js'
 
 const app = express()
 const port = Number(process.env.PORT || 3001)
@@ -170,6 +170,25 @@ app.delete('/api/dishes/:id', async (request, response, next) => {
 })
 
 const favoriteSchema = z.object({ favorite: z.boolean() })
+const messageSchema = z.object({ content: z.string().trim().min(1).max(500) })
+
+app.get('/api/messages', async (_request, response, next) => {
+  try {
+    response.setHeader('Cache-Control', 'no-store')
+    response.json(await listMessages())
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.post('/api/messages', async (request, response, next) => {
+  try {
+    const { content } = messageSchema.parse(request.body)
+    response.status(201).json(await createMessage(content))
+  } catch (error) {
+    next(error)
+  }
+})
 
 app.put('/api/dishes/:id/favorite', async (request, response, next) => {
   try {

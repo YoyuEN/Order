@@ -4,9 +4,11 @@ import { App } from '@capacitor/app'
 
 let dishes = []
 let dishesStatus = 'loading'
+let messages = []
+let messagesStatus = 'loading'
 const state = {
   category: '全部', search: '', picks: [],
-  selectedDish: null, editingDish: null, selectedOption: '', note: '', view: 'menu', orderNumber: '', confirmed: false, confirmedCount: 0, imagePreviewOpen: false, imagePreviewSrc: '', imagePreviewAlt: '', imagePreviewReturnSelector: null, showSuccessModal: false, moreMenuOpen: false,
+  selectedDish: null, editingDish: null, selectedOption: '', note: '', view: 'menu', orderNumber: '', confirmed: false, confirmedCount: 0, imagePreviewOpen: false, imagePreviewSrc: '', imagePreviewAlt: '', imagePreviewReturnSelector: null, showSuccessModal: false, moreMenuOpen: false, messageDraft: '',
 }
 
 const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
@@ -197,6 +199,27 @@ async function loadLatestOrder({ notify = false, force = false } = {}) {
   }
 }
 
+async function loadMessages({ silent = false } = {}) {
+  if (!silent) {
+    messagesStatus = 'loading'
+    render()
+  }
+  try {
+    const remoteMessages = await apiRequest('/api/messages', { cache: 'no-store' })
+    if (Array.isArray(remoteMessages)) {
+      messages = remoteMessages
+      messagesStatus = 'ready'
+      render()
+    }
+  } catch {
+    if (silent) return
+    messages = []
+    messagesStatus = 'error'
+    render()
+    showToast('留言加载失败，请检查网络后重试')
+  }
+}
+
 const icons = {
   search: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="m21 21-4.4-4.4m2.4-5.1A7.5 7.5 0 1 1 4 11.5a7.5 7.5 0 0 1 15 0Z"/></svg>',
   back: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>',
@@ -206,6 +229,7 @@ const icons = {
   plus: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
   upload: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 16V4m0 0L7.5 8.5M12 4l4.5 4.5M5 14v5h14v-5"/></svg>',
   send: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4 20-7Z"/><path d="M22 2 11 13"/></svg>',
+  message: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 4h16v12H9l-5 4V4Z"/><path d="M8 9h8M8 12h5"/></svg>',
   close: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>',
   heart: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 21C12 21 3 14 3 8a5 5 0 0 1 9-3 5 5 0 0 1 9 3c0 6-9 13-9 13Z"/></svg>',
   user: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z"/><path d="M4 22a8 8 0 0 1 16 0"/></svg>',
@@ -323,7 +347,7 @@ function bottomBar() {
     <button class="nav-item ${active === 'menu' ? 'active' : ''}" data-action="menu">${icons.home}<span>首页</span></button>
     <button class="nav-item ${active === 'orders' ? 'active' : ''}" data-action="orders">${icons.receipt}<span>已点</span></button>
     <button class="nav-center-btn" data-action="new-dish" aria-label="新增菜品">${icons.plus}</button>
-    <button class="nav-item ${active === 'favorites' ? 'active' : ''}" data-action="favorites">${icons.heart}<span>收藏</span></button>
+    <button class="nav-item ${active === 'messages' ? 'active' : ''}" data-action="messages">${icons.message}<span>留言</span></button>
     <button class="nav-item ${active === 'profile' ? 'active' : ''}" data-action="profile">${icons.user}<span>我的</span></button>
   </nav>`
 }
@@ -514,8 +538,8 @@ function pickedView() {
 }
 
 function ordersView() {
-  if (!state.picks.length) return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回菜单">${icons.back}</button><h1>今天吃什么</h1><span></span></header><div class="empty full-empty"><span class="empty-icon">${icons.receipt}</span><b>还没有点菜</b><span>选好想吃的菜后，这里会记录结果</span><button class="secondary-button" data-action="menu">去点菜</button></div>${bottomBar()}</main>`
-  return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回菜单">${icons.back}</button><h1>今天吃什么</h1><span></span></header><section class="cart-page history-menu"><div class="menu-status"><span class="success-mark success-mark--small">✓</span><div><b>${state.confirmed ? '菜单已经选好啦' : '还差最后确认'}</b><span>一共 ${pickCount()} 道菜，都是今天想吃的</span></div></div>${pickedContent()}</section><div class="history-actions"><button class="secondary-button" data-action="menu">继续点菜</button></div>${bottomBar()}</main>`
+  if (!state.picks.length) return `<main class="subpage"><header class="subpage-header"><span></span><h1>今天吃什么</h1><span></span></header><div class="empty full-empty"><span class="empty-icon">${icons.receipt}</span><b>还没有点菜</b><span>选好想吃的菜后，这里会记录结果</span><button class="secondary-button" data-action="menu">去点菜</button></div>${bottomBar()}</main>`
+  return `<main class="subpage"><header class="subpage-header"><span></span><h1>今天吃什么</h1><span></span></header><section class="cart-page history-menu"><div class="menu-status"><span class="success-mark success-mark--small">✓</span><div><b>${state.confirmed ? '菜单已经选好啦' : '还差最后确认'}</b><span>一共 ${pickCount()} 道菜，都是今天想吃的</span></div></div>${pickedContent()}</section><div class="history-actions"><button class="secondary-button" data-action="menu">继续点菜</button></div>${bottomBar()}</main>`
 }
 
 function favoritesView() {
@@ -523,12 +547,139 @@ function favoritesView() {
   const content = favorites.length
     ? `<section class="favorites-page" aria-label="收藏的菜品"><div class="section-title"><div><p class="eyebrow">我的收藏</p><h2>收藏的菜</h2></div><span>${favorites.length} 道菜</span></div><div class="dish-grid">${favorites.map(dishCard).join('')}</div><p class="favorites-hint">点开菜品可在详情页取消收藏</p></section>`
     : `<div class="empty full-empty"><span class="empty-icon">${icons.heart}</span><b>还没有收藏</b><span>点开喜欢的菜品，在详情页点「收藏」即可加入这里</span><button class="secondary-button" data-action="menu">去逛逛</button></div>`
-  return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回菜单">${icons.back}</button><h1>收藏的菜</h1><span></span></header>${content}${bottomBar()}</main>`
+  return `<main class="subpage"><header class="subpage-header"><span></span><h1>收藏的菜</h1><span></span></header>${content}${bottomBar()}</main>`
+}
+
+function formatMessageTime(value) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  const now = new Date()
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate())
+  const dayDiff = Math.round((todayStart - dayStart) / 86400000)
+  const time = `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+  if (dayDiff === 0) return `今天 ${time}`
+  if (dayDiff === 1) return `昨天 ${time}`
+  return `${date.getMonth() + 1}月${date.getDate()}日 ${time}`
+}
+
+function dayKey(value) {
+  const d = new Date(value)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function dayLabel(value) {
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return ''
+  const now = new Date()
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const dayStart = new Date(d.getFullYear(), d.getMonth(), d.getDate())
+  const dayDiff = Math.round((todayStart - dayStart) / 86400000)
+  if (dayDiff === 0) return '今天'
+  if (dayDiff === 1) return '昨天'
+  return `${d.getMonth() + 1}月${d.getDate()}日`
+}
+
+function todayMessage() {
+  const today = dayKey(new Date())
+  return messages.find((m) => dayKey(m.createdAt) === today) || null
+}
+
+function historyEntries() {
+  const today = dayKey(new Date())
+  const seen = new Set()
+  const entries = []
+  for (const m of messages) {
+    const key = dayKey(m.createdAt)
+    if (key === today || seen.has(key)) continue
+    seen.add(key)
+    entries.push(m)
+  }
+  return entries
+}
+
+function picksItems() {
+  return state.picks.map((item) => {
+    const detail = [item.option, item.note].filter(Boolean).join('，')
+    return escapeHtml(item.name) + (detail ? `（${escapeHtml(detail)}）` : '')
+  }).join('、')
+}
+
+let messageSaving = false
+
+async function saveMessage() {
+  if (messageSaving) return
+  const input = document.querySelector('#message-input')
+  const content = input?.value.trim() ?? ''
+  const saved = todayMessage()?.content
+  if (content === saved) {
+    state.editingMessage = false
+    state.messageDraft = ''
+    render()
+    return
+  }
+  if (!content) {
+    state.editingMessage = false
+    state.messageDraft = ''
+    render()
+    showToast('留言内容不能为空')
+    return
+  }
+  messageSaving = true
+  try {
+    const message = await apiRequest('/api/messages', { method: 'POST', body: JSON.stringify({ content }) })
+    messages.unshift(message)
+    messagesStatus = 'ready'
+    const liveDraft = document.querySelector('#message-input')?.value.trim() ?? ''
+    if (liveDraft === content) {
+      state.editingMessage = false
+      state.messageDraft = ''
+      render()
+      window.requestAnimationFrame(() => document.querySelector('.note-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+      showToast('已保存')
+    } else {
+      state.messageDraft = liveDraft
+      render()
+    }
+  } catch {
+    showToast('保存失败，请检查网络后重试')
+  } finally {
+    messageSaving = false
+  }
+}
+
+function noteCard() {
+  const msg = todayMessage()
+  const picks = state.picks.length ? `<p class="note-picks"><b>今天想吃：</b>${picksItems()}</p>` : ''
+  const body = state.editingMessage
+    ? `<textarea id="message-input" maxlength="500" rows="4" aria-label="留言内容" placeholder="写下今天想说的话…">${escapeHtml(state.messageDraft)}</textarea>`
+    : `<button class="today-text" data-action="edit-message" aria-label="点击写下或修改今天的留言">${msg ? `<p>${escapeHtml(msg.content)}</p><span class="today-edit-hint">✎ 点击修改</span>` : `<span class="today-empty">✎ 点击写下今天想说的话…</span>`}</button>`
+  return `<section class="note-card${state.editingMessage ? ' is-editing' : ''}">${picks}<div class="note-message">${body}</div></section>`
+}
+
+function historyItem(message) {
+  return `<li class="history-item"><time datetime="${escapeAttr(message.createdAt)}">${dayLabel(message.createdAt)}</time><p>${escapeHtml(message.content)}</p></li>`
+}
+
+function historySection() {
+  const entries = historyEntries()
+  if (!entries.length) return ''
+  const list = state.historyOpen ? `<ul class="history-list">${entries.map(historyItem).join('')}</ul>` : ''
+  return `<section class="history-section"><button class="history-toggle" data-action="toggle-history" aria-expanded="${state.historyOpen}">${state.historyOpen ? '收起历史' : `查看历史（${entries.length} 天）`}</button>${list}</section>`
+}
+
+function messagesView() {
+  const content = messagesStatus === 'loading'
+    ? '<div class="empty" role="status"><b>正在加载</b><span>正在从服务器读取留言</span></div>'
+    : messagesStatus === 'error'
+      ? '<div class="empty" role="alert"><b>留言加载失败</b><span>无法连接服务器，请检查网络后重试</span><button class="secondary-button" data-action="retry-messages">重新加载</button></div>'
+      : `${noteCard()}${historySection()}`
+  return `<main class="subpage messages-page"><header class="subpage-header"><span></span><h1>留言板</h1><span></span></header><section class="messages-content" aria-label="留言板">${content}</section>${bottomBar()}</main>`
 }
 
 function profileView() {
   const favoriteCount = dishes.filter((dish) => dish.favorite).length
-  return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回菜单">${icons.back}</button><h1>我的</h1><span></span></header>
+  return `<main class="subpage"><header class="subpage-header"><span></span><h1>我的</h1><span></span></header>
     <section class="profile-page" aria-label="个人中心">
       <div class="profile-card"><div class="profile-avatar">${icons.user}</div><div><b>乐梵小灶</b><span>和家人一起点今天想吃的菜</span></div></div>
       <div class="profile-stats">
@@ -718,11 +869,13 @@ function closeSuccessModal() {
 
 function render() {
   const categoryScrollLeft = document.querySelector('.categories')?.scrollLeft
-  const views = { menu: menuView, detail: detailView, picks: pickedView, orders: ordersView, dishForm: dishFormView, favorites: favoritesView, profile: profileView }
+  const messagesScrollTop = state.view === 'messages' ? window.scrollY : 0
+  const views = { menu: menuView, detail: detailView, picks: pickedView, orders: ordersView, dishForm: dishFormView, favorites: favoritesView, profile: profileView, messages: messagesView }
   document.querySelector('#app').innerHTML = `${views[state.view]()}${imagePreview()}${successModal()}`
   document.body.classList.toggle('image-preview-open', state.imagePreviewOpen)
   document.body.classList.toggle('modal-open', state.showSuccessModal)
   if (state.view === 'menu' && categoryScrollLeft !== undefined) document.querySelector('.categories').scrollLeft = categoryScrollLeft
+  if (state.view === 'messages') restoreScroll(messagesScrollTop)
   if (state.imagePreviewOpen) document.querySelector('.image-lightbox-close')?.focus()
   else if (state.view === 'detail') document.querySelector('.floating-back')?.focus()
 }
@@ -861,6 +1014,26 @@ document.addEventListener('click', async (event) => {
     return
   }
   if (action === 'retry-dishes') { await loadDishes(); return }
+  if (action === 'retry-messages') { await loadMessages(); return }
+  if (action === 'edit-message') {
+    const msg = todayMessage()
+    state.editingMessage = true
+    state.messageDraft = msg ? msg.content : ''
+    render()
+    window.requestAnimationFrame(() => {
+      const input = document.querySelector('#message-input')
+      if (input) {
+        input.focus()
+        input.setSelectionRange(input.value.length, input.value.length)
+      }
+    })
+    return
+  }
+  if (action === 'toggle-history') {
+    state.historyOpen = !state.historyOpen
+    render()
+    return
+  }
   if (action === 'edit-dish') { state.moreMenuOpen = false; state.editingDish = state.selectedDish; navigate('dishForm'); return }
   if (action === 'toggle-favorite') {
     const dish = state.selectedDish
@@ -914,6 +1087,7 @@ document.addEventListener('click', async (event) => {
   if (action === 'orders') { await loadLatestOrder(); navigate('orders') }
   if (action === 'new-dish') { state.editingDish = null; navigate('dishForm') }
   if (action === 'favorites') { navigate('favorites') }
+  if (action === 'messages') { loadMessages({ silent: true }); loadLatestOrder({ force: true }); navigate('messages') }
   if (action === 'profile') { navigate('profile') }
   if (action === 'clear' && window.confirm('确定清空全部已点菜品吗？')) {
     button.disabled = true
@@ -972,6 +1146,18 @@ document.addEventListener('click', onLightboxImageClick)
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && state.imagePreviewOpen) closeImagePreview()
   if (event.key === 'Escape' && state.showSuccessModal) closeSuccessModal()
+  if (event.key === 'Escape' && state.editingMessage) {
+    const msg = todayMessage()
+    state.messageDraft = msg ? msg.content : ''
+    state.editingMessage = false
+    render()
+    return
+  }
+  if (event.key === 'Enter' && event.target.id === 'message-input' && !event.shiftKey) {
+    event.preventDefault()
+    saveMessage()
+    return
+  }
   const trigger = event.target.closest('#dish-form-category')
   const option = event.target.closest('#dish-category-options [role="option"]')
   if (trigger && ['ArrowDown', 'ArrowUp', 'Enter', ' '].includes(event.key)) {
@@ -1106,7 +1292,12 @@ document.addEventListener('submit', async (event) => {
 
 document.addEventListener('input', (event) => {
   if (event.target.id === 'dish-search') { state.search = event.target.value; const position = event.target.selectionStart; render(); const input = document.querySelector('#dish-search'); input.focus(); input.setSelectionRange(position, position) }
+  if (event.target.id === 'message-input') { state.messageDraft = event.target.value; return }
   if (event.target.closest('#dish-form')) saveFormDraft()
+})
+
+document.addEventListener('focusout', (event) => {
+  if (event.target.id === 'message-input' && state.editingMessage) saveMessage()
 })
 
 document.addEventListener('change', (event) => {
@@ -1170,9 +1361,13 @@ App.addListener('backButton', ({ canGoBack }) => {
 })
 render()
 loadDishes()
+loadMessages()
 loadLatestOrder({ force: true })
 window.setInterval(() => {
-  if (!document.hidden && !isFormView()) loadLatestOrder({ notify: true })
+  if (!document.hidden && !isFormView()) {
+    loadLatestOrder({ notify: true })
+    if (state.view === 'messages' && document.activeElement?.id !== 'message-input') loadMessages({ silent: true })
+  }
 }, orderRefreshInterval)
 window.addEventListener('online', () => {
   if (isFormView()) return
