@@ -362,6 +362,11 @@ export async function createMessage(content) {
   return { id: Number(row.id), content: row.content, createdAt: row.created_at }
 }
 
+export async function deleteMessage(id) {
+  const [result] = await pool.execute('DELETE FROM messages WHERE id = ?', [id])
+  return result.affectedRows > 0
+}
+
 export async function createOrder(order) {
   const connection = await pool.getConnection()
   try {

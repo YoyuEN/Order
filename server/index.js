@@ -6,7 +6,7 @@ import { mkdir } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import multer from 'multer'
 import { z } from 'zod'
-import { clearCurrentOrder, createDish, createMessage, createOrder, deleteDish, getDish, getLatestOrder, initializeDatabase, listDishes, listMessages, pool, setFavorite, updateDish } from './db.js'
+import { clearCurrentOrder, createDish, createMessage, createOrder, deleteDish, deleteMessage, getDish, getLatestOrder, initializeDatabase, listDishes, listMessages, pool, setFavorite, updateDish } from './db.js'
 
 const app = express()
 const port = Number(process.env.PORT || 3001)
@@ -185,6 +185,19 @@ app.post('/api/messages', async (request, response, next) => {
   try {
     const { content } = messageSchema.parse(request.body)
     response.status(201).json(await createMessage(content))
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.delete('/api/messages/:id', async (request, response, next) => {
+  try {
+    const deleted = await deleteMessage(idSchema.parse(request.params.id))
+    if (!deleted) {
+      response.status(404).json({ error: '留言不存在' })
+      return
+    }
+    response.status(204).end()
   } catch (error) {
     next(error)
   }

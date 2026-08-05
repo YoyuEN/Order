@@ -618,15 +618,28 @@ async function saveMessage() {
     render()
     return
   }
-  if (!content) {
-    state.editingMessage = false
-    state.messageDraft = ''
-    render()
-    showToast('留言内容不能为空')
-    return
-  }
   messageSaving = true
   try {
+    if (!content) {
+      const existing = todayMessage()
+      if (existing) {
+        await apiRequest(`/api/messages/${existing.id}`, { method: 'DELETE' })
+        messages = messages.filter((m) => m.id !== existing.id)
+      }
+      messagesStatus = 'ready'
+      const liveDraft = document.querySelector('#message-input')?.value.trim() ?? ''
+      if (liveDraft === content) {
+        state.editingMessage = false
+        state.messageDraft = ''
+        render()
+        window.requestAnimationFrame(() => document.querySelector('.note-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
+        if (existing) showToast('已清除')
+      } else {
+        state.messageDraft = liveDraft
+        render()
+      }
+      return
+    }
     const message = await apiRequest('/api/messages', { method: 'POST', body: JSON.stringify({ content }) })
     messages.unshift(message)
     messagesStatus = 'ready'
@@ -653,7 +666,7 @@ function noteCard() {
   const picks = state.picks.length ? `<p class="note-picks"><b>今天想吃：</b>${picksItems()}</p>` : ''
   const body = state.editingMessage
     ? `<textarea id="message-input" maxlength="500" rows="4" aria-label="留言内容" placeholder="写下今天想说的话…">${escapeHtml(state.messageDraft)}</textarea>`
-    : `<button class="today-text" data-action="edit-message" aria-label="点击写下或修改今天的留言">${msg ? `<p>${escapeHtml(msg.content)}</p><span class="today-edit-hint">✎ 点击修改</span>` : `<span class="today-empty">✎ 点击写下今天想说的话…</span>`}</button>`
+    : `<button class="today-text" data-action="edit-message" aria-label="点击写下或修改今天的留言">${msg ? `<p>${escapeHtml(msg.content)}</p>` : `<span class="today-empty">点击写下今天想说的话…</span>`}</button>`
   return `<section class="note-card${state.editingMessage ? ' is-editing' : ''}">${picks}<div class="note-message">${body}</div></section>`
 }
 

@@ -2288,11 +2288,6 @@ textarea {
   overflow-wrap: break-word;
 }
 
-.today-edit-hint {
-  font-size: 12px;
-  color: var(--red);
-}
-
 .today-empty {
   display: block;
   font-size: 14px;
