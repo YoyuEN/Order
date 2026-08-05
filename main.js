@@ -172,8 +172,7 @@ async function loadDishes() {
   }
 }
 
-async function loadLatestOrder({ notify = false, force = false } = {}) {
-  if (!force && !state.confirmed) return
+async function loadLatestOrder({ notify = false } = {}) {
   try {
     const order = await apiRequest('/api/orders/latest', { cache: 'no-store' })
     if (!order) {
@@ -530,16 +529,16 @@ function onLightboxImageClick(event) {
 
 function pickedContent(desktop = false) {
   if (!state.picks.length) return `<div class="cart-heading"><div><p class="eyebrow">今天想吃</p><h2>已点菜单</h2></div></div><div class="empty cart-empty"><span class="empty-icon">${icons.list}</span><b>还没有点菜</b><span>从菜单里挑几道她喜欢的吧</span></div>`
-  return `<div class="cart-heading"><div><p class="eyebrow">今天想吃</p><h2>已点菜单</h2></div><button data-action="clear">清空</button></div><div class="cart-items">${state.picks.map((item, index) => `<div class="cart-item"><button class="cart-item-main" data-dish="${item.dishId}" aria-label="查看${escapeAttr(item.name)}详情"><span><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.option)}${item.note ? ` · ${escapeHtml(item.note)}` : ''}</small></span><i aria-hidden="true">›</i></button><button class="remove-item" data-action="remove-pick" data-index="${index}" aria-label="移除${escapeAttr(item.name)}">移除</button></div>`).join('')}</div>${desktop ? '<button class="primary-button" data-action="confirm-menu">确认点菜</button>' : ''}`
+  return `<div class="cart-heading"><div><p class="eyebrow">今天想吃</p><h2>已点菜单</h2></div><button data-action="clear">清空</button></div><div class="cart-items">${state.picks.map((item, index) => `<div class="cart-item"><button class="cart-item-main" data-dish="${item.dishId}" aria-label="查看${escapeAttr(item.name)}详情"><span><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.option)}${item.note ? ` · ${escapeHtml(item.note)}` : ''}</small></span><i aria-hidden="true">›</i></button><button class="remove-item" data-action="remove-pick" data-index="${index}" aria-label="移除${escapeAttr(item.name)}">移除</button></div>`).join('')}</div>`
 }
 
 function pickedView() {
-  return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回菜单">${icons.back}</button><h1>确认菜单</h1><span></span></header><section class="cart-page">${pickedContent()}</section>${state.picks.length ? `<footer class="checkout-bar"><span>共选 <strong>${pickCount()} 道菜</strong></span><button class="primary-button" data-action="confirm-menu">确认点菜</button></footer>` : ''}</main>`
+  return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回菜单">${icons.back}</button><h1>已点菜单</h1><span></span></header><section class="cart-page">${pickedContent()}</section></main>`
 }
 
 function ordersView() {
   if (!state.picks.length) return `<main class="subpage"><header class="subpage-header"><span></span><h1>今天吃什么</h1><span></span></header><div class="empty full-empty"><span class="empty-icon">${icons.receipt}</span><b>还没有点菜</b><span>选好想吃的菜后，这里会记录结果</span><button class="secondary-button" data-action="menu">去点菜</button></div>${bottomBar()}</main>`
-  return `<main class="subpage"><header class="subpage-header"><span></span><h1>今天吃什么</h1><span></span></header><section class="cart-page history-menu"><div class="menu-status"><span class="success-mark success-mark--small">✓</span><div><b>${state.confirmed ? '菜单已经选好啦' : '还差最后确认'}</b><span>一共 ${pickCount()} 道菜，都是今天想吃的</span></div></div>${pickedContent()}</section><div class="history-actions"><button class="secondary-button" data-action="menu">继续点菜</button></div>${bottomBar()}</main>`
+  return `<main class="subpage"><header class="subpage-header"><span></span><h1>今天吃什么</h1><span></span></header><section class="cart-page history-menu"><div class="menu-status"><span class="success-mark success-mark--small">✓</span><div><b>今天的菜单已经选好啦</b><span>一共 ${pickCount()} 道菜，都是今天想吃的</span></div></div>${pickedContent()}</section><div class="history-actions"><button class="secondary-button" data-action="menu">继续点菜</button></div>${bottomBar()}</main>`
 }
 
 function favoritesView() {
@@ -910,6 +909,21 @@ function addDish(dish, option = dish.options[0], note = '') {
   markMenuAsDraft()
 }
 
+async function syncOrder() {
+  if (!state.picks.length) {
+    await apiRequest('/api/orders/current', { method: 'DELETE' })
+    state.orderNumber = ''
+    state.confirmed = false
+    state.confirmedCount = 0
+    return
+  }
+  const order = { orderNumber: `ORD${Date.now()}`, items: state.picks }
+  await apiRequest('/api/orders', { method: 'POST', body: JSON.stringify(order) })
+  state.confirmedCount = pickCount()
+  state.confirmed = true
+  state.orderNumber = order.orderNumber
+}
+
 document.addEventListener('click', async (event) => {
   const button = event.target.closest('button'); if (!button) return
   if (button.dataset.category) { state.category = button.dataset.category; render(); return }
@@ -1087,10 +1101,38 @@ document.addEventListener('click', async (event) => {
   }
   if (button.dataset.dish) {
     const dish = dishes.find((item) => item.id === Number(button.dataset.dish))
-    if (button.classList.contains('add-button')) { addDish(dish); showToast(`已添加「${dish.name}」`); render() } else openDish(button.dataset.dish)
+    if (button.classList.contains('add-button')) {
+      addDish(dish)
+      button.disabled = true
+      try {
+        await syncOrder()
+        render()
+        showToast(`已经点好「${dish.name}」啦`)
+      } catch {
+        state.picks = state.picks.filter((item) => item.dishId !== dish.id)
+        render()
+        showToast('点菜失败，请检查网络后重试')
+      }
+    } else openDish(button.dataset.dish)
     return
   }
-  if (action === 'remove-pick') { state.picks.splice(Number(button.dataset.index), 1); markMenuAsDraft(); render(); return }
+  if (action === 'remove-pick') {
+    const index = Number(button.dataset.index)
+    const removed = state.picks[index]
+    if (!removed) return
+    state.picks.splice(index, 1)
+    button.disabled = true
+    try {
+      await syncOrder()
+      render()
+      showToast(`已移除「${removed.name}」`)
+    } catch {
+      state.picks.splice(index, 0, removed)
+      render()
+      showToast('移除失败，请检查网络后重试')
+    }
+    return
+  }
   if (action === 'close') { goBack() }
   if (action === 'close-success-modal') { closeSuccessModal(); return }
   if (action === 'orders-from-modal') { closeSuccessModal(); await loadLatestOrder(); navigate('orders'); return }
@@ -1118,26 +1160,25 @@ document.addEventListener('click', async (event) => {
     }
     return
   }
-  if (action === 'confirm-add') { const option = document.querySelector('input[name="option"]:checked')?.value || state.selectedDish.options[0]; const note = document.querySelector('#dish-note').value.trim(); addDish(state.selectedDish, option, note); goBack(); showToast('已经点好这道菜啦') }
-  if (action === 'confirm-menu') {
-    if (!state.picks.length) return
-    const order = { orderNumber: `ORD${Date.now()}`, items: state.picks }
+  if (action === 'confirm-add') {
+    const dish = state.selectedDish
+    const option = document.querySelector('input[name="option"]:checked')?.value || dish.options[0]
+    const note = document.querySelector('#dish-note').value.trim()
+    const prevIndex = state.picks.findIndex((item) => item.dishId === dish.id)
+    const prevPick = prevIndex >= 0 ? state.picks[prevIndex] : null
+    addDish(dish, option, note)
     button.disabled = true
     try {
-      await apiRequest('/api/orders', {
-        method: 'POST',
-        body: JSON.stringify(order),
-      })
-      state.confirmedCount = pickCount()
-      state.confirmed = true
-      state.orderNumber = order.orderNumber
+      await syncOrder()
+      goBack()
+      showToast('已经点好这道菜啦')
     } catch {
+      if (prevPick) state.picks[prevIndex] = prevPick
+      else state.picks = state.picks.filter((item) => item.dishId !== dish.id)
       button.disabled = false
-      showToast('确认失败，数据未保存，请检查网络后重试')
-      return
+      showToast('点菜失败，请检查网络后重试')
     }
-    state.showSuccessModal = true
-    render()
+    return
   }
 })
 
