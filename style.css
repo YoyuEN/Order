@@ -2610,35 +2610,6 @@ textarea {
   font-size: 38px;
 }
 
-.success-mark--small {
-  flex: 0 0 46px;
-  width: 46px;
-  height: 46px;
-  margin: 0;
-  border-width: 5px;
-  font-size: 20px;
-}
-
-.menu-status {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 18px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid var(--line);
-}
-
-.menu-status>div {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.menu-status span:last-child {
-  color: var(--muted);
-  font-size: 11px;
-}
-
 .history-menu {
   margin-top: 14px;
 }

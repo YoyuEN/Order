@@ -640,7 +640,7 @@ function ordersView() {
     }).join('')}
   </div>`
   const currentBlock = hasPicks
-    ? `<section class="cart-page history-menu"><div class="menu-status"><span class="success-mark success-mark--small">✓</span><div><b>${state.mealPeriod}的菜单已经选好啦</b><span>一共 ${pickCount()} 道菜，都是${state.mealPeriod}想吃的</span></div></div>${pickedContent()}</section>`
+    ? `<section class="cart-page history-menu">${pickedContent()}</section>`
     : `<div class="empty full-empty"><span class="empty-icon">${icons.receipt}</span><b>${state.mealPeriod}还没有点菜</b><span>在首页选好${state.mealPeriod}想吃的菜，这里会记录结果</span><button class="secondary-button" data-action="menu">去点${state.mealPeriod}</button></div>`
   return `<main class="subpage"><header class="subpage-header"><span></span><h1>今天吃什么</h1><span></span></header>${periodOverview}${currentBlock}${bottomBar()}</main>`
 }
