@@ -6,8 +6,11 @@ let dishes = []
 let dishesStatus = 'loading'
 let messages = []
 let messagesStatus = 'loading'
+const mealPeriods = ['早餐', '午餐', '晚餐', '夜宵']
 const state = {
   category: '全部', search: '', picks: [],
+  mealPeriod: '午餐', messageTab: '全部', editingMessagePeriod: null,
+  orderHistory: [], orderHistoryStatus: 'idle',
   selectedDish: null, editingDish: null, selectedOption: '', note: '', view: 'menu', orderNumber: '', confirmed: false, confirmedCount: 0, imagePreviewOpen: false, imagePreviewSrc: '', imagePreviewAlt: '', imagePreviewReturnSelector: null, showSuccessModal: false, moreMenuOpen: false, messageDraft: '',
 }
 
@@ -25,6 +28,8 @@ function navigationState(scrollY = 0) {
     view: state.view,
     selectedDishId: state.selectedDish?.id || null,
     editingDishId: state.editingDish?.id || null,
+    mealPeriod: state.mealPeriod,
+    messageTab: state.messageTab,
     scrollY,
   }
 }
@@ -33,6 +38,8 @@ function restoreNavigationState(entry) {
   state.view = entry.view || 'menu'
   state.selectedDish = entry.selectedDishId ? dishes.find((dish) => dish.id === entry.selectedDishId) || state.selectedDish : null
   state.editingDish = entry.editingDishId ? dishes.find((dish) => dish.id === entry.editingDishId) || state.editingDish : null
+  state.mealPeriod = mealPeriods.includes(entry.mealPeriod) ? entry.mealPeriod : state.mealPeriod
+  state.messageTab = ['全部', ...mealPeriods].includes(entry.messageTab) ? entry.messageTab : state.messageTab
   state.moreMenuOpen = false
 }
 
@@ -174,9 +181,9 @@ async function loadDishes() {
 
 async function loadLatestOrder({ notify = false } = {}) {
   try {
-    const order = await apiRequest('/api/orders/latest', { cache: 'no-store' })
+    const order = await apiRequest(`/api/orders/latest?mealPeriod=${encodeURIComponent(state.mealPeriod)}`, { cache: 'no-store' })
     if (!order) {
-      if (state.confirmed) {
+      if (state.confirmed && state.picks.length > 0) {
         state.picks = []
         state.orderNumber = ''
         state.confirmed = false
@@ -196,6 +203,29 @@ async function loadLatestOrder({ notify = false } = {}) {
   } catch {
     if (notify) showToast('菜单同步失败，请检查网络后重试')
   }
+}
+
+async function loadOrderHistory() {
+  state.orderHistoryStatus = state.orderHistory.length ? 'ready' : 'loading'
+  render()
+  try {
+    const history = await apiRequest('/api/orders?days=30', { cache: 'no-store' })
+    if (Array.isArray(history)) {
+      state.orderHistory = history
+      state.orderHistoryStatus = 'ready'
+    }
+  } catch {
+    state.orderHistoryStatus = state.orderHistory.length ? 'ready' : 'error'
+  }
+  render()
+}
+
+function defaultMealPeriod() {
+  const hour = new Date().getHours()
+  if (hour < 10) return '早餐'
+  if (hour < 15) return '午餐'
+  if (hour < 21) return '晚餐'
+  return '夜宵'
 }
 
 async function loadMessages({ silent = false } = {}) {
@@ -322,8 +352,11 @@ function menuView() {
     <main class="menu-layout">
       <section class="menu-panel" aria-labelledby="menu-heading">
         <div class="search-wrap">${icons.search}<label class="sr-only" for="dish-search">搜索菜品</label><input id="dish-search" type="search" placeholder="搜索想吃的菜" value="${escapeHtml(state.search)}" autocomplete="off"></div>
+        <div class="meal-tabs" role="group" aria-label="选择餐次">
+          ${mealPeriods.map((period) => `<button type="button" class="meal-tab${state.mealPeriod === period ? ' active' : ''}" data-action="select-meal-period" data-period="${period}" aria-pressed="${state.mealPeriod === period}">${period}</button>`).join('')}
+        </div>
         <nav class="categories" aria-label="菜品分类">${categories.map((category) => `<button class="category ${category === state.category ? 'active' : ''}" data-category="${escapeAttr(category)}" aria-pressed="${category === state.category}">${escapeHtml(category)}</button>`).join('')}</nav>
-        <div class="section-title"><div><p class="eyebrow">今日菜单</p><h2 id="menu-heading">${state.category === '全部' ? '人气菜品' : escapeHtml(state.category)}</h2></div><span>${filtered.length} 道菜</span></div>
+        <div class="section-title"><div><p class="eyebrow">今日菜单 · ${state.mealPeriod}</p><h2 id="menu-heading">${state.category === '全部' ? '人气菜品' : escapeHtml(state.category)}</h2></div><span>${filtered.length} 道菜</span></div>
         <div class="dish-grid">${dishGrid}</div>
       </section>
       <aside class="desktop-cart" aria-label="已点菜单">${pickedContent(true)}</aside>
@@ -528,17 +561,73 @@ function onLightboxImageClick(event) {
 }
 
 function pickedContent(desktop = false) {
-  if (!state.picks.length) return `<div class="cart-heading"><div><p class="eyebrow">今天想吃</p><h2>已点菜单</h2></div></div><div class="empty cart-empty"><span class="empty-icon">${icons.list}</span><b>还没有点菜</b><span>从菜单里挑几道她喜欢的吧</span></div>`
-  return `<div class="cart-heading"><div><p class="eyebrow">今天想吃</p><h2>已点菜单</h2></div><button data-action="clear">清空</button></div><div class="cart-items">${state.picks.map((item, index) => `<div class="cart-item"><button class="cart-item-main" data-dish="${item.dishId}" aria-label="查看${escapeAttr(item.name)}详情"><span><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.option)}${item.note ? ` · ${escapeHtml(item.note)}` : ''}</small></span><i aria-hidden="true">›</i></button><button class="remove-item" data-action="remove-pick" data-index="${index}" aria-label="移除${escapeAttr(item.name)}">移除</button></div>`).join('')}</div>`
+  if (!state.picks.length) return `<div class="cart-heading"><div><p class="eyebrow">${state.mealPeriod}想吃</p><h2>已点菜单</h2></div></div><div class="empty cart-empty"><span class="empty-icon">${icons.list}</span><b>还没有点菜</b><span>从菜单里挑几道${state.mealPeriod}想吃的吧</span></div>`
+  return `<div class="cart-heading"><div><p class="eyebrow">${state.mealPeriod}想吃</p><h2>已点菜单</h2></div><button data-action="clear">清空</button></div><div class="cart-items">${state.picks.map((item, index) => `<div class="cart-item"><button class="cart-item-main" data-dish="${item.dishId}" aria-label="查看${escapeAttr(item.name)}详情"><span><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.option)}${item.note ? ` · ${escapeHtml(item.note)}` : ''}</small></span><i aria-hidden="true">›</i></button><button class="remove-item" data-action="remove-pick" data-index="${index}" aria-label="移除${escapeAttr(item.name)}">移除</button></div>`).join('')}</div>`
 }
 
 function pickedView() {
-  return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回菜单">${icons.back}</button><h1>已点菜单</h1><span></span></header><section class="cart-page">${pickedContent()}</section></main>`
+  return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回菜单">${icons.back}</button><h1>${state.mealPeriod}已点菜单</h1><span></span></header><section class="cart-page">${pickedContent()}</section></main>`
+}
+
+function todayOrdersByPeriod() {
+  const today = dayKey(new Date())
+  const map = {}
+  for (const order of state.orderHistory) {
+    if (order.status !== 'confirmed' && order.status !== 'completed') continue
+    if (dayKey(order.createdAt) !== today) continue
+    map[order.mealPeriod || '午餐'] = order
+  }
+  return map
 }
 
 function ordersView() {
-  if (!state.picks.length) return `<main class="subpage"><header class="subpage-header"><span></span><h1>今天吃什么</h1><span></span></header><div class="empty full-empty"><span class="empty-icon">${icons.receipt}</span><b>还没有点菜</b><span>选好想吃的菜后，这里会记录结果</span><button class="secondary-button" data-action="menu">去点菜</button></div>${bottomBar()}</main>`
-  return `<main class="subpage"><header class="subpage-header"><span></span><h1>今天吃什么</h1><span></span></header><section class="cart-page history-menu"><div class="menu-status"><span class="success-mark success-mark--small">✓</span><div><b>今天的菜单已经选好啦</b><span>一共 ${pickCount()} 道菜，都是今天想吃的</span></div></div>${pickedContent()}</section><div class="history-actions"><button class="secondary-button" data-action="menu">继续点菜</button></div>${bottomBar()}</main>`
+  const byPeriod = todayOrdersByPeriod()
+  const hasPicks = state.picks.length > 0
+  const periodOverview = `<div class="period-overview" role="group" aria-label="今日各餐次">
+    ${mealPeriods.map((period) => {
+      const order = byPeriod[period]
+      const isCurrent = period === state.mealPeriod
+      return `<button type="button" class="period-chip${isCurrent ? ' current' : ''}${order ? ' done' : ''}" data-action="select-meal-period" data-period="${period}" aria-pressed="${isCurrent}"><b>${period}</b><span>${order ? `已点 ${order.items.length} 道` : '未点'}</span></button>`
+    }).join('')}
+  </div>`
+  const currentBlock = hasPicks
+    ? `<section class="cart-page history-menu"><div class="menu-status"><span class="success-mark success-mark--small">✓</span><div><b>${state.mealPeriod}的菜单已经选好啦</b><span>一共 ${pickCount()} 道菜，都是${state.mealPeriod}想吃的</span></div></div>${pickedContent()}</section><div class="history-actions"><button class="secondary-button" data-action="menu">继续点菜</button><button class="secondary-button" data-action="history">查看点餐记录</button></div>`
+    : `<div class="empty full-empty"><span class="empty-icon">${icons.receipt}</span><b>${state.mealPeriod}还没有点菜</b><span>在首页选好${state.mealPeriod}想吃的菜，这里会记录结果</span><button class="secondary-button" data-action="menu">去点${state.mealPeriod}</button></div>`
+  return `<main class="subpage"><header class="subpage-header"><span></span><h1>今天吃什么</h1><button class="icon-button header-history-btn" data-action="history" aria-label="查看点餐记录">${icons.list}</button></header>${periodOverview}${currentBlock}${bottomBar()}</main>`
+}
+
+function orderHistoryCard(order) {
+  const items = order.items.map((item) => `<li><b>${escapeHtml(item.name)}</b><span>${escapeHtml(item.option)}${item.note ? ` · ${escapeHtml(item.note)}` : ''}</span></li>`).join('')
+  return `<article class="order-history-card">
+    <div class="order-history-head"><span class="period-badge">${order.mealPeriod || '午餐'}</span><time>${formatMessageTime(order.createdAt)}</time></div>
+    <ul class="order-history-items">${items || '<li class="order-history-empty">无菜品记录</li>'}</ul>
+    <button class="secondary-button repeat-order-btn" data-action="repeat-order" data-order-id="${order.id}">再来一单</button>
+  </article>`
+}
+
+function groupOrderHistory() {
+  const groups = []
+  for (const order of state.orderHistory) {
+    const day = dayKey(order.createdAt)
+    let group = groups.find((item) => item.day === day)
+    if (!group) {
+      group = { day, orders: [] }
+      groups.push(group)
+    }
+    group.orders.push(order)
+  }
+  return groups.map((group) => `<section class="order-day-group" aria-label="${dayLabel(group.orders[0].createdAt)}的点餐记录"><h2>${dayLabel(group.orders[0].createdAt)}</h2>${group.orders.map(orderHistoryCard).join('')}</section>`).join('')
+}
+
+function historyView() {
+  const content = state.orderHistoryStatus === 'loading'
+    ? '<div class="empty" role="status"><b>正在加载记录</b><span>正在读取过去的点餐记录</span></div>'
+    : state.orderHistoryStatus === 'error'
+      ? '<div class="empty" role="alert"><b>记录加载失败</b><span>无法连接服务器，请检查网络后重试</span><button class="secondary-button" data-action="retry-history">重新加载</button></div>'
+      : state.orderHistory.length
+        ? groupOrderHistory()
+        : `<div class="empty full-empty"><span class="empty-icon">${icons.receipt}</span><b>还没有点餐记录</b><span>点过餐之后，这里会按日期保存每一餐</span><button class="secondary-button" data-action="menu">去点菜</button></div>`
+  return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回">${icons.back}</button><h1>点餐记录</h1><span></span></header><section class="history-page">${content}</section>${bottomBar()}</main>`
 }
 
 function favoritesView() {
@@ -579,22 +668,33 @@ function dayLabel(value) {
   return `${d.getMonth() + 1}月${d.getDate()}日`
 }
 
-function todayMessage() {
-  const today = dayKey(new Date())
-  return messages.find((m) => dayKey(m.createdAt) === today) || null
+function messagePeriodKey(period) {
+  return period || null
 }
 
-function historyEntries() {
+function todayMessageFor(period) {
   const today = dayKey(new Date())
-  const seen = new Set()
-  const entries = []
+  const target = messagePeriodKey(period)
+  return messages.find((m) => dayKey(m.createdAt) === today && messagePeriodKey(m.mealPeriod) === target) || null
+}
+
+function todayMessages() {
+  const today = dayKey(new Date())
+  return messages.filter((m) => dayKey(m.createdAt) === today)
+}
+
+function historyGroups() {
+  const today = dayKey(new Date())
+  const byDay = new Map()
   for (const m of messages) {
     const key = dayKey(m.createdAt)
-    if (key === today || seen.has(key)) continue
-    seen.add(key)
-    entries.push(m)
+    if (key === today) continue
+    if (!byDay.has(key)) byDay.set(key, [])
+    byDay.get(key).push(m)
   }
-  return entries
+  return [...byDay.entries()]
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([day, list]) => ({ day, messages: list }))
 }
 
 function rawPicksText() {
@@ -617,7 +717,7 @@ let messageSaving = false
 async function saveMessage() {
   if (messageSaving) return
   const input = document.querySelector('#message-input')
-  // 保存时自动附上当天所点的餐（若有点餐）
+  // 保存时自动附上当前餐次所点的餐（若有点餐）
   const picksPrefix = state.picks.length ? `今天想吃：${rawPicksText()}` : ''
   const userText = input?.value.trim() ?? ''
   let content = picksPrefix ? (userText ? `${picksPrefix}\n${userText}` : picksPrefix) : userText
@@ -629,7 +729,8 @@ async function saveMessage() {
       content = userText.slice(0, 500)
     }
   }
-  const saved = todayMessage()?.content
+  const mealPeriod = state.messageTab === '全部' ? null : state.messageTab
+  const saved = todayMessageFor(mealPeriod)?.content
   if (content === saved) {
     state.editingMessage = false
     state.messageDraft = ''
@@ -638,7 +739,7 @@ async function saveMessage() {
   }
   messageSaving = true
   try {
-    const existing = todayMessage()
+    const existing = todayMessageFor(mealPeriod)
     if (!content) {
       if (existing) {
         await apiRequest(`/api/messages/${existing.id}`, { method: 'DELETE' })
@@ -658,10 +759,10 @@ async function saveMessage() {
       }
       return
     }
-    // 每天只保留一条留言：今天已有留言则更新，否则新建
+    // 每个餐次每天只保留一条留言：该餐次今天已有留言则更新，否则新建
     const message = existing
-      ? await apiRequest(`/api/messages/${existing.id}`, { method: 'PUT', body: JSON.stringify({ content }) })
-      : await apiRequest('/api/messages', { method: 'POST', body: JSON.stringify({ content }) })
+      ? await apiRequest(`/api/messages/${existing.id}`, { method: 'PUT', body: JSON.stringify({ content, mealPeriod }) })
+      : await apiRequest('/api/messages', { method: 'POST', body: JSON.stringify({ content, mealPeriod }) })
     messages = messages
       .filter((m) => m.id !== message.id)
       .concat(message)
@@ -698,31 +799,40 @@ function timeOnly(value) {
 }
 
 function noteCard() {
-  const msg = todayMessage()
+  const period = state.messageTab === '全部' ? null : state.messageTab
+  const msg = todayMessageFor(period)
   const showPicksRow = state.editingMessage || !msg
   const picks = showPicksRow && state.picks.length ? `<p class="note-picks"><b>今天想吃：</b>${picksItems()}</p>` : ''
   const updated = msg && !state.editingMessage ? `<span class="note-updated">更新于 ${formatMessageTime(msg.updatedAt || msg.createdAt)}</span>` : ''
   const body = state.editingMessage
-    ? `<div class="message-edit-wrap"><textarea id="message-input" maxlength="500" rows="4" aria-label="留言内容" placeholder="写下今天想说的话…">${escapeHtml(state.messageDraft)}</textarea></div>`
-    : `<button class="today-text" data-action="edit-message" aria-label="点击写下或修改今天的留言">${msg ? `<p>${escapeHtml(msg.content)}</p>` : `<span class="today-empty">点击写下今天想说的话…</span>`}</button>${updated}`
-  return `<section class="note-card${state.editingMessage ? ' is-editing' : ''}">${picks}<div class="note-message">${body}</div></section>`
+    ? `<div class="message-edit-wrap"><textarea id="message-input" maxlength="500" rows="4" aria-label="留言内容" placeholder="写下想说的话…">${escapeHtml(state.messageDraft)}</textarea></div>`
+    : `<button class="today-text" data-action="edit-message" aria-label="点击写下或修改${state.messageTab === '全部' ? '' : state.messageTab}的留言">${msg ? `<p>${escapeHtml(msg.content)}</p>` : `<span class="today-empty">${state.messageTab === '全部' ? '点击写下想说的话…' : `点击写下${state.messageTab}想说的话…`}</span>`}</button>${updated}`
+  const heading = state.messageTab === '全部'
+    ? '<p class="note-card-eyebrow">留言板 · 通用</p>'
+    : `<p class="note-card-eyebrow">留言板 · ${state.messageTab}</p>`
+  return `<section class="note-card${state.editingMessage ? ' is-editing' : ''}">${heading}${picks}<div class="note-message">${body}</div></section>`
 }
 
 function historyItem(message) {
+  const period = message.mealPeriod
+  const periodBadge = period ? `<em class="history-period">${period}</em>` : ''
   const updated = message.updatedAt && message.updatedAt !== message.createdAt
     ? ` · 更新 ${timeOnly(message.updatedAt)}`
     : ''
-  return `<li class="history-item"><time datetime="${escapeAttr(message.createdAt)}">${dayLabel(message.createdAt)}${updated}</time><p>${escapeHtml(message.content)}</p></li>`
+  return `<li class="history-item"><time datetime="${escapeAttr(message.createdAt)}">${dayLabel(message.createdAt)}${updated}</time><p>${periodBadge}${escapeHtml(message.content)}</p></li>`
 }
 
 function historySection() {
-  const entries = historyEntries()
-  if (!entries.length) return ''
-  const list = state.historyOpen ? `<ul class="history-list">${entries.map(historyItem).join('')}</ul>` : ''
-  return `<section class="history-section"><button class="history-toggle" data-action="toggle-history" aria-expanded="${state.historyOpen}">${state.historyOpen ? '收起历史' : `查看历史（${entries.length} 天）`}</button>${list}</section>`
+  const groups = historyGroups()
+  if (!groups.length) return ''
+  const list = state.historyOpen ? `<ul class="history-list">${groups.map((group) => group.messages.map(historyItem).join('')).join('')}</ul>` : ''
+  return `<section class="history-section"><button class="history-toggle" data-action="toggle-history" aria-expanded="${state.historyOpen}">${state.historyOpen ? '收起历史' : `查看历史（${groups.length} 天）`}</button>${list}</section>`
 }
 
 function messagesView() {
+  const tabs = `<div class="meal-tabs message-tabs" role="tablist" aria-label="按餐次查看留言">
+    ${['全部', ...mealPeriods].map((period) => `<button type="button" role="tab" aria-selected="${state.messageTab === period}" class="meal-tab${state.messageTab === period ? ' active' : ''}" data-action="select-message-tab" data-period="${period}">${period}</button>`).join('')}
+  </div>`
   const content = messagesStatus === 'loading'
     ? '<div class="empty" role="status"><b>正在加载</b><span>正在从服务器读取留言</span></div>'
     : messagesStatus === 'error'
@@ -731,7 +841,7 @@ function messagesView() {
   const headerAction = state.editingMessage
     ? `<span class="header-action"><button type="button" class="message-save-btn" data-action="save-message" aria-label="保存留言"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg></button></span>`
     : '<span class="header-action"></span>'
-  return `<main class="subpage messages-page"><header class="subpage-header"><span></span><h1>留言板</h1>${headerAction}</header><section class="messages-content" aria-label="留言板">${content}</section>${bottomBar()}</main>`
+  return `<main class="subpage messages-page"><header class="subpage-header"><span></span><h1>留言板</h1>${headerAction}</header><section class="messages-content" aria-label="留言板">${tabs}${content}</section>${bottomBar()}</main>`
 }
 
 function profileView() {
@@ -748,6 +858,7 @@ function profileView() {
         <button class="profile-action" data-action="menu">${icons.list}<span>浏览菜单</span></button>
         <button class="profile-action" data-action="favorites">${icons.heart}<span>我的收藏</span></button>
         <button class="profile-action" data-action="orders">${icons.receipt}<span>今天的菜单</span></button>
+        <button class="profile-action" data-action="history">${icons.list}<span>点餐记录</span></button>
       </div>
     </section>${bottomBar()}</main>`
 }
@@ -927,7 +1038,7 @@ function closeSuccessModal() {
 function render() {
   const categoryScrollLeft = document.querySelector('.categories')?.scrollLeft
   const messagesScrollTop = state.view === 'messages' ? window.scrollY : 0
-  const views = { menu: menuView, detail: detailView, picks: pickedView, orders: ordersView, dishForm: dishFormView, favorites: favoritesView, profile: profileView, messages: messagesView }
+  const views = { menu: menuView, detail: detailView, picks: pickedView, orders: ordersView, dishForm: dishFormView, favorites: favoritesView, profile: profileView, messages: messagesView, history: historyView }
   document.querySelector('#app').innerHTML = `${views[state.view]()}${imagePreview()}${successModal()}`
   document.body.classList.toggle('image-preview-open', state.imagePreviewOpen)
   document.body.classList.toggle('modal-open', state.showSuccessModal)
@@ -956,13 +1067,13 @@ function addDish(dish, option = dish.options[0], note = '') {
 
 async function syncOrder() {
   if (!state.picks.length) {
-    await apiRequest('/api/orders/current', { method: 'DELETE' })
+    await apiRequest(`/api/orders/current?mealPeriod=${encodeURIComponent(state.mealPeriod)}`, { method: 'DELETE' })
     state.orderNumber = ''
     state.confirmed = false
     state.confirmedCount = 0
     return
   }
-  const order = { orderNumber: `ORD${Date.now()}`, items: state.picks }
+  const order = { orderNumber: `ORD${Date.now()}`, mealPeriod: state.mealPeriod, items: state.picks }
   await apiRequest('/api/orders', { method: 'POST', body: JSON.stringify(order) })
   state.confirmedCount = pickCount()
   state.confirmed = true
@@ -1087,9 +1198,55 @@ document.addEventListener('click', async (event) => {
   }
   if (action === 'retry-dishes') { await loadDishes(); return }
   if (action === 'retry-messages') { await loadMessages(); return }
+  if (action === 'retry-history') { await loadOrderHistory(); return }
+  if (action === 'select-meal-period') {
+    const period = button.dataset.period
+    if (!mealPeriods.includes(period) || period === state.mealPeriod) return
+    state.mealPeriod = period
+    render()
+    await loadLatestOrder()
+    return
+  }
+  if (action === 'select-message-tab') {
+    const period = button.dataset.period
+    if (!['全部', ...mealPeriods].includes(period) || period === state.messageTab) return
+    if (state.editingMessage && document.querySelector('#message-input')) await saveMessage()
+    state.messageTab = period
+    state.editingMessage = false
+    state.messageDraft = ''
+    render()
+    return
+  }
+  if (action === 'history') {
+    if (state.orderHistoryStatus === 'idle') await loadOrderHistory()
+    navigate('history')
+    return
+  }
+  if (action === 'repeat-order') {
+    const id = Number(button.dataset.orderId)
+    const order = state.orderHistory.find((item) => item.id === id)
+    const items = (order?.items || []).filter((item) => item.dishId).map((item) => ({ ...item, key: String(item.dishId) }))
+    if (!order || !items.length) {
+      showToast('没有可复制的菜品')
+      return
+    }
+    state.mealPeriod = order.mealPeriod
+    state.picks = items
+    button.disabled = true
+    try {
+      await syncOrder()
+      navigate('menu', { replace: true })
+      showToast(`已按${order.mealPeriod}的菜单再点一单`)
+    } catch {
+      button.disabled = false
+      showToast('再来一单失败，请检查网络后重试')
+    }
+    return
+  }
   if (action === 'save-message') { saveMessage(); return }
   if (action === 'edit-message') {
-    const msg = todayMessage()
+    const period = state.messageTab === '全部' ? null : state.messageTab
+    const msg = todayMessageFor(period)
     state.editingMessage = true
     state.messageDraft = msg ? splitMessageContent(msg.content) : ''
     render()
@@ -1185,15 +1342,15 @@ document.addEventListener('click', async (event) => {
   if (action === 'menu') { navigate('menu', { replace: true }) }
   if (action === 'close-form') { state.editingDish = null; goBack() }
   if (action === 'picks') { navigate('picks') }
-  if (action === 'orders') { await loadLatestOrder(); navigate('orders') }
+  if (action === 'orders') { await loadLatestOrder(); if (state.orderHistoryStatus === 'idle') await loadOrderHistory(); navigate('orders') }
   if (action === 'new-dish') { state.editingDish = null; navigate('dishForm') }
   if (action === 'favorites') { navigate('favorites') }
-  if (action === 'messages') { loadMessages({ silent: true }); loadLatestOrder({ force: true }); navigate('messages') }
+  if (action === 'messages') { loadMessages({ silent: true }); loadLatestOrder(); navigate('messages') }
   if (action === 'profile') { navigate('profile') }
   if (action === 'clear' && window.confirm('确定清空全部已点菜品吗？')) {
     button.disabled = true
     try {
-      await apiRequest('/api/orders/current', { method: 'DELETE' })
+      await apiRequest(`/api/orders/current?mealPeriod=${encodeURIComponent(state.mealPeriod)}`, { method: 'DELETE' })
       state.picks = []
       state.orderNumber = ''
       state.confirmed = false
@@ -1247,7 +1404,8 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && state.imagePreviewOpen) closeImagePreview()
   if (event.key === 'Escape' && state.showSuccessModal) closeSuccessModal()
   if (event.key === 'Escape' && state.editingMessage) {
-    const msg = todayMessage()
+    const period = state.messageTab === '全部' ? null : state.messageTab
+    const msg = todayMessageFor(period)
     state.messageDraft = msg ? splitMessageContent(msg.content) : ''
     state.editingMessage = false
     render()
@@ -1461,9 +1619,12 @@ App.addListener('backButton', ({ canGoBack }) => {
   else App.exitApp()
 })
 render()
+state.mealPeriod = defaultMealPeriod()
+render()
 loadDishes()
 loadMessages()
-loadLatestOrder({ force: true })
+loadLatestOrder()
+loadOrderHistory()
 window.setInterval(() => {
   if (!document.hidden && !isFormView()) {
     loadLatestOrder({ notify: true })

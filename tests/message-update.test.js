@@ -46,3 +46,22 @@ test('更新不存在的留言返回 null', async () => {
   const updated = await updateMessage(999999999, '不存在')
   assert.equal(updated, null)
 })
+
+test('留言支持按餐次保存与查询', async () => {
+  const lunch = await createMessage('午餐想喝汤', '午餐')
+  createdIds.push(lunch.id)
+  const general = await createMessage('通用留言', null)
+  createdIds.push(general.id)
+
+  const all = await listMessages()
+  const lunchRow = all.find((m) => m.id === lunch.id)
+  const generalRow = all.find((m) => m.id === general.id)
+
+  assert.equal(lunchRow.mealPeriod, '午餐')
+  assert.equal(generalRow.mealPeriod, null)
+
+  const updated = await updateMessage(lunch.id, '午餐想喝番茄汤', '午餐')
+  assert.equal(updated.id, lunch.id)
+  assert.equal(updated.mealPeriod, '午餐')
+  assert.equal(updated.content, '午餐想喝番茄汤')
+})

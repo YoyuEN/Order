@@ -43,3 +43,41 @@ test('另一台设备可以读取最近确认的菜单', async () => {
     note: '少盐',
   }])
 })
+
+test('午餐和晚餐订单互不影响（按餐次隔离）', async () => {
+  const stamp = Date.now()
+  const dish = await createDish({
+    category: '同步测试',
+    name: `餐次隔离测试-${stamp}`,
+    desc: '用于验证不同餐次的订单互不覆盖',
+    spicy: 0,
+    image: '/icons/icon.svg',
+    options: ['标准份'],
+  })
+  const dishId = Number(dish.id)
+  const lunchNumber = `LUNCH${stamp}`
+  const dinnerNumber = `DINNER${stamp}`
+
+  await createOrder({
+    orderNumber: lunchNumber,
+    mealPeriod: '午餐',
+    items: [{ dishId, name: dish.name, option: '标准份', note: '' }],
+  })
+  await createOrder({
+    orderNumber: dinnerNumber,
+    mealPeriod: '晚餐',
+    items: [{ dishId, name: dish.name, option: '标准份', note: '' }],
+  })
+
+  const lunch = await getLatestOrder('午餐')
+  const dinner = await getLatestOrder('晚餐')
+  const lunchAgain = await getLatestOrder('午餐')
+
+  assert.equal(lunch.orderNumber, lunchNumber, '午餐订单应保留')
+  assert.equal(dinner.orderNumber, dinnerNumber, '晚餐订单应独立存在')
+  assert.equal(lunchAgain.orderNumber, lunchNumber, '晚餐下单不应覆盖午餐订单')
+  assert.equal(lunch.mealPeriod, '午餐')
+  assert.equal(dinner.mealPeriod, '晚餐')
+
+  await deleteDish(dishId)
+})
