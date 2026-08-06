@@ -640,9 +640,9 @@ function ordersView() {
     }).join('')}
   </div>`
   const currentBlock = hasPicks
-    ? `<section class="cart-page history-menu"><div class="menu-status"><span class="success-mark success-mark--small">✓</span><div><b>${state.mealPeriod}的菜单已经选好啦</b><span>一共 ${pickCount()} 道菜，都是${state.mealPeriod}想吃的</span></div></div>${pickedContent()}</section><div class="history-actions"><button class="secondary-button" data-action="menu">继续点菜</button><button class="secondary-button" data-action="history">查看点餐记录</button></div>`
+    ? `<section class="cart-page history-menu"><div class="menu-status"><span class="success-mark success-mark--small">✓</span><div><b>${state.mealPeriod}的菜单已经选好啦</b><span>一共 ${pickCount()} 道菜，都是${state.mealPeriod}想吃的</span></div></div>${pickedContent()}</section>`
     : `<div class="empty full-empty"><span class="empty-icon">${icons.receipt}</span><b>${state.mealPeriod}还没有点菜</b><span>在首页选好${state.mealPeriod}想吃的菜，这里会记录结果</span><button class="secondary-button" data-action="menu">去点${state.mealPeriod}</button></div>`
-  return `<main class="subpage"><header class="subpage-header"><span></span><h1>今天吃什么</h1><button class="icon-button header-history-btn" data-action="history" aria-label="查看点餐记录">${icons.list}</button></header>${periodOverview}${currentBlock}${bottomBar()}</main>`
+  return `<main class="subpage"><header class="subpage-header"><span></span><h1>今天吃什么</h1><span></span></header>${periodOverview}${currentBlock}${bottomBar()}</main>`
 }
 
 function orderHistoryCard(order) {
@@ -911,9 +911,7 @@ function profileView() {
         <div><b>${pickCount()}</b><span>已点菜品</span></div>
       </div>
       <div class="profile-actions">
-        <button class="profile-action" data-action="menu">${icons.list}<span>浏览菜单</span></button>
         <button class="profile-action" data-action="favorites">${icons.heart}<span>我的收藏</span></button>
-        <button class="profile-action" data-action="orders">${icons.receipt}<span>今天的菜单</span></button>
         <button class="profile-action" data-action="history">${icons.list}<span>点餐记录</span></button>
         <button class="profile-action" data-action="message-history">${icons.message}<span>留言历史</span></button>
       </div>

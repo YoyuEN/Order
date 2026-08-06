@@ -2643,15 +2643,6 @@ textarea {
   margin-top: 14px;
 }
 
-.history-actions {
-  padding: 0 14px;
-}
-
-.history-actions .secondary-button {
-  width: 100%;
-  margin-top: 12px;
-}
-
 .period-overview {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -2697,10 +2688,6 @@ textarea {
 
 .period-chip.current b {
   color: var(--red);
-}
-
-.header-history-btn {
-  justify-self: end;
 }
 
 .history-page {
