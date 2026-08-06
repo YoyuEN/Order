@@ -975,7 +975,8 @@ function messagesView() {
   const headerAction = state.editingMessage
     ? `<span class="header-action"><button type="button" class="message-save-btn" data-action="save-message" aria-label="保存留言"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg></button></span>`
     : '<span class="header-action"></span>'
-  return `<main class="subpage messages-page"><header class="subpage-header"><span></span><h1>留言板</h1>${headerAction}</header><section class="messages-content" aria-label="留言板">${content}</section>${bottomBar()}</main>`
+  const editing = state.editingMessage ? ' editing' : ''
+  return `<main class="subpage messages-page"><header class="subpage-header"><span></span><h1>留言板</h1>${headerAction}</header><section class="messages-content${editing}" aria-label="留言板">${content}</section>${bottomBar()}</main>`
 }
 
 function profileView() {

@@ -2334,6 +2334,17 @@ textarea {
   background-image: none;
 }
 
+/* 编辑态：未编辑的信纸按内容自然高度排列、不被键盘弹出时压缩；正在编辑的卡保持足够大的编辑区域 */
+.messages-content.editing .note-card:not(.is-editing) {
+  flex: 0 0 auto;
+  min-height: 96px;
+}
+
+.messages-content.editing .note-card.is-editing {
+  flex: 1 1 40dvh;
+  min-height: 220px;
+}
+
 .note-card-eyebrow {
   margin: 0 0 6px;
   font-size: 11px;
