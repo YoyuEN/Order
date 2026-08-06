@@ -12,7 +12,7 @@ const state = {
   mealPeriod: '午餐', messageTab: '全部', editingMessagePeriod: null,
   orderHistory: [], orderHistoryStatus: 'idle',
   messagePicks: [], messagePicksByPeriod: {},
-  selectedDish: null, editingDish: null, selectedOption: '', note: '', view: 'menu', orderNumber: '', confirmed: false, confirmedCount: 0, imagePreviewOpen: false, imagePreviewSrc: '', imagePreviewAlt: '', imagePreviewReturnSelector: null, showSuccessModal: false, moreMenuOpen: false, messageDraft: '',
+  selectedDish: null, editingDish: null, selectedOption: '', note: '', view: 'menu', orderNumber: '', confirmed: false, confirmedCount: 0, imagePreviewOpen: false, imagePreviewSrc: '', imagePreviewAlt: '', imagePreviewReturnSelector: null, showSuccessModal: false, moreMenuOpen: false, ordersMenuOpen: false, messageDraft: '',
 }
 
 const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
@@ -43,6 +43,7 @@ function restoreNavigationState(entry) {
   state.mealPeriod = mealPeriods.includes(entry.mealPeriod) ? entry.mealPeriod : state.mealPeriod
   state.messageTab = ['全部', ...mealPeriods].includes(entry.messageTab) ? entry.messageTab : state.messageTab
   state.moreMenuOpen = false
+  state.ordersMenuOpen = false
 }
 
 function restoreScroll(scrollY = 0) {
@@ -291,6 +292,7 @@ const icons = {
   heart: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 21C12 21 3 14 3 8a5 5 0 0 1 9-3 5 5 0 0 1 9 3c0 6-9 13-9 13Z"/></svg>',
   user: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z"/><path d="M4 22a8 8 0 0 1 16 0"/></svg>',
   more: '<svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>',
+  moreHorizontal: '<svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>',
   edit: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>',
   trash: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14Z"/></svg>',
   chevronDown: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg>',
@@ -609,8 +611,8 @@ function onLightboxImageClick(event) {
 }
 
 function pickedContent(desktop = false) {
-  if (!state.picks.length) return `<div class="cart-heading"><div><p class="eyebrow">${state.mealPeriod}想吃</p><h2>已点菜单</h2></div></div><div class="empty cart-empty"><span class="empty-icon">${icons.list}</span><b>还没有点菜</b><span>从菜单里挑几道${state.mealPeriod}想吃的吧</span></div>`
-  return `<div class="cart-heading"><div><p class="eyebrow">${state.mealPeriod}想吃</p><h2>已点菜单</h2></div><button data-action="clear">清空</button></div><div class="cart-items">${state.picks.map((item, index) => `<div class="cart-item"><button class="cart-item-main" data-dish="${item.dishId}" aria-label="查看${escapeAttr(item.name)}详情"><span><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.option)}${item.note ? ` · ${escapeHtml(item.note)}` : ''}</small></span><i aria-hidden="true">›</i></button><button class="remove-item" data-action="remove-pick" data-index="${index}" aria-label="移除${escapeAttr(item.name)}">移除</button></div>`).join('')}</div>`
+  if (!state.picks.length) return `<div class="empty cart-empty"><span class="empty-icon">${icons.list}</span><b>还没有点菜</b><span>从菜单里挑几道${state.mealPeriod}想吃的吧</span></div>`
+  return `<ul class="cart-items">${state.picks.map((item, index) => `<li class="cart-item"><button class="cart-item-main" data-dish="${item.dishId}" aria-label="查看${escapeAttr(item.name)}详情"><span><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.option)}${item.note ? ` · ${escapeHtml(item.note)}` : ''}</small></span><i aria-hidden="true">›</i></button><button class="remove-item" data-action="remove-pick" data-index="${index}" aria-label="移除${escapeAttr(item.name)}">移除</button></li>`).join('')}</ul>`
 }
 
 function pickedView() {
@@ -642,7 +644,13 @@ function ordersView() {
   const currentBlock = hasPicks
     ? `<section class="cart-page history-menu">${pickedContent()}</section>`
     : `<div class="empty full-empty"><span class="empty-icon">${icons.receipt}</span><b>${state.mealPeriod}还没有点菜</b><span>在首页选好${state.mealPeriod}想吃的菜，这里会记录结果</span><button class="secondary-button" data-action="menu">去点${state.mealPeriod}</button></div>`
-  return `<main class="subpage"><header class="subpage-header"><span></span><h1>今天吃什么</h1><span></span></header>${periodOverview}${currentBlock}${bottomBar()}</main>`
+  const headerAction = hasPicks
+    ? `<button type="button" class="icon-button" data-action="toggle-orders-menu" aria-label="更多操作" aria-haspopup="menu" aria-expanded="${state.ordersMenuOpen}">${icons.moreHorizontal}</button>`
+    : '<span></span>'
+  const ordersMenu = state.ordersMenuOpen && hasPicks
+    ? `<div class="more-menu-dropdown" role="menu" aria-label="已点菜单操作"><button type="button" class="more-menu-item" data-action="clear" role="menuitem">${icons.trash}<span>清空已点菜单</span></button></div><button type="button" class="more-menu-backdrop" data-action="close-orders-menu" aria-label="关闭菜单"></button>`
+    : ''
+  return `<main class="subpage"><header class="subpage-header"><span></span><h1>今天吃什么</h1>${headerAction}</header>${ordersMenu}${periodOverview}${currentBlock}${bottomBar()}</main>`
 }
 
 function orderHistoryCard(order) {
@@ -755,6 +763,76 @@ function rawPicksText() {
 
 function picksItems() {
   return escapeHtml(rawPicksText())
+}
+
+// —— 已点菜单项左滑显示“移除”按钮（仅触屏） ——
+const CART_ACTION_WIDTH = 72
+const cartSwipeGesture = { active: false, item: null, main: null, startX: 0, startY: 0, startOffset: 0, swiping: false, suppressClick: false }
+
+function closeCartSwipe(except) {
+  document.querySelectorAll('.cart-item.swiped').forEach((item) => {
+    if (item !== except) item.classList.remove('swiped')
+  })
+}
+
+function onCartPointerDown(event) {
+  if (event.pointerType === 'mouse') return
+  if (state.imagePreviewOpen) return
+  if (event.target.closest('.remove-item')) return
+  const item = event.target.closest('.cart-item')
+  closeCartSwipe(item)
+  if (!item) return
+  const wasSwiped = item.classList.contains('swiped')
+  cartSwipeGesture.active = true
+  cartSwipeGesture.item = item
+  cartSwipeGesture.main = item.querySelector('.cart-item-main')
+  cartSwipeGesture.startX = event.clientX
+  cartSwipeGesture.startY = event.clientY
+  cartSwipeGesture.startOffset = wasSwiped ? -CART_ACTION_WIDTH : 0
+  cartSwipeGesture.swiping = false
+  cartSwipeGesture.suppressClick = false
+  if (wasSwiped) {
+    item.classList.remove('swiped')
+    cartSwipeGesture.suppressClick = true
+  }
+  try { item.setPointerCapture(event.pointerId) } catch { /* 部分浏览器不支持 */ }
+}
+
+function onCartPointerMove(event) {
+  const g = cartSwipeGesture
+  if (!g.active || !g.item || !g.main) return
+  const dx = event.clientX - g.startX
+  const dy = event.clientY - g.startY
+  if (!g.swiping) {
+    if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return
+    if (Math.abs(dx) > Math.abs(dy)) {
+      g.swiping = true
+      g.suppressClick = true
+      g.item.classList.add('swiping')
+    } else {
+      g.active = false
+      g.item = null
+      g.main = null
+      return
+    }
+  }
+  const next = Math.max(-CART_ACTION_WIDTH - 20, Math.min(0, g.startOffset + dx))
+  g.main.style.transform = `translateX(${next}px)`
+}
+
+function onCartPointerUp(event) {
+  const g = cartSwipeGesture
+  if (!g.active) return
+  const { item, main, swiping, startOffset } = g
+  g.active = false
+  g.item = null
+  g.main = null
+  if (!item || !main || !swiping) return
+  item.classList.remove('swiping')
+  main.style.transform = ''
+  const total = startOffset + (event.clientX - g.startX)
+  item.classList.toggle('swiped', total < -CART_ACTION_WIDTH / 2)
+  closeCartSwipe(item)
 }
 
 function isTouchDevice() {
@@ -1141,6 +1219,7 @@ async function syncOrder() {
 }
 
 document.addEventListener('click', async (event) => {
+  if (cartSwipeGesture.suppressClick) { cartSwipeGesture.suppressClick = false; return }
   const button = event.target.closest('button'); if (!button) return
   if (button.dataset.category) { state.category = button.dataset.category; render(); return }
   const action = button.dataset.action
@@ -1159,6 +1238,8 @@ document.addEventListener('click', async (event) => {
   if (action === 'reset-lightbox-zoom') { resetLightboxZoom(); return }
   if (action === 'toggle-more-menu') { state.moreMenuOpen = !state.moreMenuOpen; render(); return }
   if (action === 'close-more-menu') { state.moreMenuOpen = false; render(); return }
+  if (action === 'toggle-orders-menu') { state.ordersMenuOpen = !state.ordersMenuOpen; render(); return }
+  if (action === 'close-orders-menu') { state.ordersMenuOpen = false; render(); return }
   if (action === 'add-option') {
     const list = document.querySelector('#option-list')
     if (!list || list.children.length >= 6) { showToast('最多添加 6 个菜品规格'); return }
@@ -1263,6 +1344,7 @@ document.addEventListener('click', async (event) => {
     const period = button.dataset.period
     if (!mealPeriods.includes(period) || period === state.mealPeriod) return
     state.mealPeriod = period
+    state.ordersMenuOpen = false
     render()
     await loadLatestOrder()
     return
@@ -1378,6 +1460,7 @@ document.addEventListener('click', async (event) => {
     const removed = state.picks[index]
     if (!removed) return
     state.picks.splice(index, 1)
+    state.ordersMenuOpen = false
     button.disabled = true
     try {
       await syncOrder()
@@ -1392,11 +1475,11 @@ document.addEventListener('click', async (event) => {
   }
   if (action === 'close') { goBack() }
   if (action === 'close-success-modal') { closeSuccessModal(); return }
-  if (action === 'orders-from-modal') { closeSuccessModal(); await loadLatestOrder(); navigate('orders'); return }
+  if (action === 'orders-from-modal') { closeSuccessModal(); state.ordersMenuOpen = false; await loadLatestOrder(); navigate('orders'); return }
   if (action === 'menu') { navigate('menu', { replace: true }) }
   if (action === 'close-form') { state.editingDish = null; goBack() }
   if (action === 'picks') { navigate('picks') }
-  if (action === 'orders') { await loadLatestOrder(); await loadOrderHistory(); navigate('orders') }
+  if (action === 'orders') { state.ordersMenuOpen = false; await loadLatestOrder(); await loadOrderHistory(); navigate('orders') }
   if (action === 'new-dish') { state.editingDish = null; navigate('dishForm') }
   if (action === 'favorites') { navigate('favorites') }
   if (action === 'messages') {
@@ -1409,6 +1492,7 @@ document.addEventListener('click', async (event) => {
     try {
       await apiRequest(`/api/orders/current?mealPeriod=${encodeURIComponent(state.mealPeriod)}`, { method: 'DELETE' })
       state.picks = []
+      state.ordersMenuOpen = false
       state.orderNumber = ''
       state.confirmed = false
       state.confirmedCount = 0
@@ -1444,6 +1528,7 @@ document.addEventListener('click', async (event) => {
 })
 
 document.addEventListener('click', (event) => {
+  if (cartSwipeGesture.suppressClick) { cartSwipeGesture.suppressClick = false; return }
   if (event.target.classList.contains('image-lightbox')) {
     if (lightboxGesture.suppressClick) { lightboxGesture.suppressClick = false; return }
     closeImagePreview()
@@ -1457,9 +1542,14 @@ document.addEventListener('pointermove', onLightboxPointerMove, { passive: false
 document.addEventListener('pointerup', onLightboxPointerUp, { passive: false })
 document.addEventListener('pointercancel', onLightboxPointerUp, { passive: false })
 document.addEventListener('click', onLightboxImageClick)
+document.addEventListener('pointerdown', onCartPointerDown, { passive: false })
+document.addEventListener('pointermove', onCartPointerMove, { passive: false })
+document.addEventListener('pointerup', onCartPointerUp, { passive: false })
+document.addEventListener('pointercancel', onCartPointerUp, { passive: false })
 
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && state.imagePreviewOpen) closeImagePreview()
+  if (event.key === 'Escape' && state.ordersMenuOpen) { state.ordersMenuOpen = false; render() }
   if (event.key === 'Escape' && state.showSuccessModal) closeSuccessModal()
   if (event.key === 'Escape' && state.editingMessage) {
     const period = state.editingMessagePeriod || state.mealPeriod

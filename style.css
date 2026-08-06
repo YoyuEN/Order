@@ -95,8 +95,7 @@ svg {
 }
 
 .app-header h1,
-.section-title h2,
-.cart-heading h2 {
+.section-title h2 {
   margin: 0;
   font-family: 'Noto Serif SC', serif;
 }
@@ -232,8 +231,7 @@ svg {
   margin: 12px 2px 14px;
 }
 
-.section-title h2,
-.cart-heading h2 {
+.section-title h2 {
   font-size: 21px;
 }
 
@@ -2032,32 +2030,23 @@ textarea {
   border-radius: 15px;
 }
 
-.cart-heading {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 13px;
-}
-
-.cart-heading button {
-  padding: 8px;
-  color: var(--muted);
-  background: none;
-  border: 0;
-  cursor: pointer;
-}
-
 .cart-items {
+  margin: 0;
+  padding: 0;
   border-top: 1px solid var(--line);
+  list-style: none;
 }
 
 .cart-item {
+  position: relative;
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 15px;
   padding: 14px 0;
+  overflow: hidden;
   border-bottom: 1px solid var(--line);
+  touch-action: pan-y;
 }
 
 .cart-item-main {
@@ -2074,6 +2063,16 @@ textarea {
   border: 0;
   border-radius: 10px;
   cursor: pointer;
+  touch-action: pan-y;
+  transition: transform .22s ease;
+}
+
+.cart-item.swiping .cart-item-main {
+  transition: none;
+}
+
+.cart-item.swiped .cart-item-main {
+  transform: translateX(-72px);
 }
 
 .cart-item-main:hover {
@@ -2111,16 +2110,60 @@ textarea {
 }
 
 .remove-item {
-  flex: 0 0 auto;
-  min-height: 36px;
-  padding: 7px 10px;
-  color: var(--red-dark);
-  background: #fff3f0;
-  border: 1px solid #e9b9b1;
-  border-radius: 9px;
-  font-size: 11px;
+  position: absolute;
+  top: 8px;
+  right: 0;
+  bottom: 8px;
+  display: grid;
+  min-width: 72px;
+  place-items: center;
+  padding: 0 18px;
+  color: white;
+  background: var(--red);
+  border: 0;
+  border-radius: 10px 0 0 10px;
+  font-size: 12px;
   font-weight: 700;
   cursor: pointer;
+  transform: translateX(100%);
+  transition: transform .22s ease;
+  pointer-events: none;
+}
+
+.cart-item.swiped .remove-item {
+  transform: translateX(0);
+  pointer-events: auto;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .cart-item {
+    overflow: visible;
+    touch-action: auto;
+  }
+
+  .cart-item-main {
+    touch-action: auto;
+    transition: none;
+  }
+
+  .cart-item.swiped .cart-item-main {
+    transform: none;
+  }
+
+  .remove-item {
+    position: static;
+    display: grid;
+    min-width: 0;
+    min-height: 36px;
+    padding: 7px 10px;
+    color: var(--red-dark);
+    background: #fff3f0;
+    border: 1px solid #e9b9b1;
+    border-radius: 9px;
+    font-size: 11px;
+    transform: none;
+    pointer-events: auto;
+  }
 }
 
 .bill {
