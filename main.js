@@ -11,7 +11,7 @@ const state = {
   category: '全部', search: '', picks: [],
   mealPeriod: '午餐', messageTab: '全部', editingMessagePeriod: null,
   orderHistory: [], orderHistoryStatus: 'idle',
-  messagePicks: [],
+  messagePicks: [], messagePicksByPeriod: {},
   selectedDish: null, editingDish: null, selectedOption: '', note: '', view: 'menu', orderNumber: '', confirmed: false, confirmedCount: 0, imagePreviewOpen: false, imagePreviewSrc: '', imagePreviewAlt: '', imagePreviewReturnSelector: null, showSuccessModal: false, moreMenuOpen: false, messageDraft: '',
 }
 
@@ -22,6 +22,7 @@ const formDraftKey = 'dish-form-draft'
 let formDraft = null
 let draftCoverUrl = null
 let draftStepUrls = []
+let previewScrollY = 0
 
 function navigationState(scrollY = 0) {
   return {
@@ -221,11 +222,14 @@ async function loadMessagePicks(period) {
   }
   try {
     const order = await apiRequest(`/api/orders/latest?mealPeriod=${encodeURIComponent(period)}`, { cache: 'no-store' })
-    state.messagePicks = Array.isArray(order?.items)
+    const picks = Array.isArray(order?.items)
       ? order.items.map((item) => ({ ...item, key: String(item.dishId) }))
       : []
+    state.messagePicksByPeriod[period] = picks
+    state.messagePicks = picks
   } catch {
     state.messagePicks = []
+    state.messagePicksByPeriod[period] = []
   }
 }
 
@@ -440,6 +444,7 @@ function openImagePreview(src, alt, returnSelector = '[data-action="preview-imag
   state.imagePreviewAlt = alt
   state.imagePreviewReturnSelector = returnSelector
   state.imagePreviewOpen = true
+  previewScrollY = window.scrollY
   render()
 }
 
@@ -457,6 +462,7 @@ function closeImagePreview() {
   resetLightboxZoom()
   render()
   document.querySelector(returnSelector || '[data-action="preview-image"]')?.focus()
+  if (previewScrollY > 0) restoreScroll(previewScrollY)
 }
 
 // —— 图片预览缩放（捏合 / 拖动 / 双击），保证各平台（含 Android WebView、微信内置浏览器）行为一致 ——
@@ -777,10 +783,11 @@ async function saveMessage() {
       content = userText.slice(0, 500)
     }
   }
-  const mealPeriod = state.messageTab === '全部' ? null : state.messageTab
+  const mealPeriod = state.editingMessagePeriod || state.mealPeriod
   const saved = todayMessageFor(mealPeriod)?.content
   if (content === saved) {
     state.editingMessage = false
+    state.editingMessagePeriod = null
     state.messageDraft = ''
     render()
     return
@@ -797,6 +804,7 @@ async function saveMessage() {
       const liveDraft = document.querySelector('#message-input')?.value.trim() ?? ''
       if (liveDraft === content) {
         state.editingMessage = false
+        state.editingMessagePeriod = null
         state.messageDraft = ''
         render()
         window.requestAnimationFrame(() => document.querySelector('.note-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
@@ -818,6 +826,7 @@ async function saveMessage() {
     const liveDraft = document.querySelector('#message-input')?.value.trim() ?? ''
     if (liveDraft === content) {
       state.editingMessage = false
+      state.editingMessagePeriod = null
       state.messageDraft = ''
       render()
       window.requestAnimationFrame(() => document.querySelector('.note-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
@@ -846,23 +855,20 @@ function timeOnly(value) {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
 }
 
-function noteCard() {
-  const period = state.messageTab === '全部' ? null : state.messageTab
+function noteCard(period) {
   const msg = todayMessageFor(period)
-  const showPicksRow = state.editingMessage || !msg
-  const messagePicksText = escapeHtml(state.messagePicks.map((item) => {
+  const isEditing = state.editingMessage && state.editingMessagePeriod === period
+  const messagePicks = state.messagePicksByPeriod[period] || []
+  const messagePicksText = escapeHtml(messagePicks.map((item) => {
     const detail = [item.option, item.note].filter(Boolean).join('，')
     return item.name + (detail ? `（${detail}）` : '')
   }).join('、'))
-  const picks = showPicksRow && state.messagePicks.length ? `<p class="note-picks"><b>今天想吃：</b>${messagePicksText}</p>` : ''
-  const updated = msg && !state.editingMessage ? `<span class="note-updated">更新于 ${formatMessageTime(msg.updatedAt || msg.createdAt)}</span>` : ''
-  const body = state.editingMessage
-    ? `<div class="message-edit-wrap"><textarea id="message-input" maxlength="500" rows="4" aria-label="留言内容" placeholder="写下想说的话…">${escapeHtml(state.messageDraft)}</textarea></div>`
-    : `<button class="today-text" data-action="edit-message" aria-label="点击写下或修改${state.messageTab === '全部' ? '' : state.messageTab}的留言">${msg ? `<p>${escapeHtml(msg.content)}</p>` : `<span class="today-empty">${state.messageTab === '全部' ? '点击写下想说的话…' : `点击写下${state.messageTab}想说的话…`}</span>`}</button>${updated}`
-  const heading = state.messageTab === '全部'
-    ? '<p class="note-card-eyebrow">留言板 · 通用</p>'
-    : `<p class="note-card-eyebrow">留言板 · ${state.messageTab}</p>`
-  return `<section class="note-card${state.editingMessage ? ' is-editing' : ''}">${heading}${picks}<div class="note-message">${body}</div></section>`
+  const picks = messagePicks.length ? `<p class="note-picks"><b>今天想吃：</b>${messagePicksText}</p>` : ''
+  const updated = msg && !isEditing ? `<span class="note-updated">更新于 ${formatMessageTime(msg.updatedAt || msg.createdAt)}</span>` : ''
+  const body = isEditing
+    ? `<div class="message-edit-wrap"><textarea id="message-input" maxlength="500" rows="4" aria-label="${period}留言内容" placeholder="写下${period}想说的话…">${escapeHtml(state.messageDraft)}</textarea></div>`
+    : `<button class="today-text" data-action="edit-message" data-period="${period}" aria-label="点击写下或修改${period}的留言">${msg ? `<p>${escapeHtml(splitMessageContent(msg.content))}</p>` : `<span class="today-empty">点击写下${period}想说的话…</span>`}</button>${updated}`
+  return `<section class="note-card${isEditing ? ' is-editing' : ''}"><p class="note-card-eyebrow">${period}</p>${picks}<div class="note-message">${body}</div></section>`
 }
 
 function historyItem(message) {
@@ -874,26 +880,24 @@ function historyItem(message) {
   return `<li class="history-item"><time datetime="${escapeAttr(message.createdAt)}">${dayLabel(message.createdAt)}${updated}</time><p>${periodBadge}${escapeHtml(message.content)}</p></li>`
 }
 
-function historySection() {
+function messageHistoryView() {
   const groups = historyGroups()
-  if (!groups.length) return ''
-  const list = state.historyOpen ? `<ul class="history-list">${groups.map((group) => group.messages.map(historyItem).join('')).join('')}</ul>` : ''
-  return `<section class="history-section"><button class="history-toggle" data-action="toggle-history" aria-expanded="${state.historyOpen}">${state.historyOpen ? '收起历史' : `查看历史（${groups.length} 天）`}</button>${list}</section>`
+  const content = groups.length
+    ? groups.map((group) => `<section class="order-day-group" aria-label="${dayLabel(group.day)}的留言"><h2>${dayLabel(group.day)}</h2><ul class="history-list">${group.messages.map(historyItem).join('')}</ul></section>`).join('')
+    : `<div class="empty full-empty"><span class="empty-icon">${icons.message}</span><b>还没有留言历史</b><span>在留言板写下想说的话，这里会按日期保存</span><button class="secondary-button" data-action="messages">去留言</button></div>`
+  return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回">${icons.back}</button><h1>留言历史</h1><span></span></header><section class="history-page">${content}</section>${bottomBar()}</main>`
 }
 
 function messagesView() {
-  const tabs = `<div class="meal-tabs message-tabs" role="tablist" aria-label="按餐次查看留言">
-    ${['全部', ...mealPeriods].map((period) => `<button type="button" role="tab" aria-selected="${state.messageTab === period}" class="meal-tab${state.messageTab === period ? ' active' : ''}" data-action="select-message-tab" data-period="${period}">${period}</button>`).join('')}
-  </div>`
   const content = messagesStatus === 'loading'
     ? '<div class="empty" role="status"><b>正在加载</b><span>正在从服务器读取留言</span></div>'
     : messagesStatus === 'error'
       ? '<div class="empty" role="alert"><b>留言加载失败</b><span>无法连接服务器，请检查网络后重试</span><button class="secondary-button" data-action="retry-messages">重新加载</button></div>'
-      : `${noteCard()}${historySection()}`
+      : mealPeriods.map((period) => noteCard(period)).join('')
   const headerAction = state.editingMessage
     ? `<span class="header-action"><button type="button" class="message-save-btn" data-action="save-message" aria-label="保存留言"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg></button></span>`
     : '<span class="header-action"></span>'
-  return `<main class="subpage messages-page"><header class="subpage-header"><span></span><h1>留言板</h1>${headerAction}</header><section class="messages-content" aria-label="留言板">${tabs}${content}</section>${bottomBar()}</main>`
+  return `<main class="subpage messages-page"><header class="subpage-header"><span></span><h1>留言板</h1>${headerAction}</header><section class="messages-content" aria-label="留言板">${content}</section>${bottomBar()}</main>`
 }
 
 function profileView() {
@@ -911,6 +915,7 @@ function profileView() {
         <button class="profile-action" data-action="favorites">${icons.heart}<span>我的收藏</span></button>
         <button class="profile-action" data-action="orders">${icons.receipt}<span>今天的菜单</span></button>
         <button class="profile-action" data-action="history">${icons.list}<span>点餐记录</span></button>
+        <button class="profile-action" data-action="message-history">${icons.message}<span>留言历史</span></button>
       </div>
     </section>${bottomBar()}</main>`
 }
@@ -1090,7 +1095,7 @@ function closeSuccessModal() {
 function render() {
   const categoryScrollLeft = document.querySelector('.categories')?.scrollLeft
   const messagesScrollTop = state.view === 'messages' ? window.scrollY : 0
-  const views = { menu: menuView, detail: detailView, picks: pickedView, orders: ordersView, dishForm: dishFormView, favorites: favoritesView, profile: profileView, messages: messagesView, history: historyView }
+  const views = { menu: menuView, detail: detailView, picks: pickedView, orders: ordersView, dishForm: dishFormView, favorites: favoritesView, profile: profileView, messages: messagesView, history: historyView, messageHistory: messageHistoryView }
   document.querySelector('#app').innerHTML = `${views[state.view]()}${imagePreview()}${successModal()}`
   document.body.classList.toggle('image-preview-open', state.imagePreviewOpen)
   document.body.classList.toggle('modal-open', state.showSuccessModal)
@@ -1264,17 +1269,6 @@ document.addEventListener('click', async (event) => {
     await loadLatestOrder()
     return
   }
-  if (action === 'select-message-tab') {
-    const period = button.dataset.period
-    if (!['全部', ...mealPeriods].includes(period) || period === state.messageTab) return
-    if (state.editingMessage && document.querySelector('#message-input')) await saveMessage()
-    state.messageTab = period
-    state.editingMessage = false
-    state.messageDraft = ''
-    await loadMessagePicks(period)
-    render()
-    return
-  }
   if (action === 'history') {
     await loadOrderHistory()
     navigate('history')
@@ -1303,9 +1297,13 @@ document.addEventListener('click', async (event) => {
   }
   if (action === 'save-message') { saveMessage(); return }
   if (action === 'edit-message') {
-    const period = state.messageTab === '全部' ? null : state.messageTab
+    const period = button.dataset.period
+    if (!mealPeriods.includes(period)) return
+    if (state.editingMessage && document.querySelector('#message-input')) await saveMessage()
+    await loadMessagePicks(period)
     const msg = todayMessageFor(period)
     state.editingMessage = true
+    state.editingMessagePeriod = period
     state.messageDraft = msg ? splitMessageContent(msg.content) : ''
     render()
     window.requestAnimationFrame(() => {
@@ -1317,9 +1315,9 @@ document.addEventListener('click', async (event) => {
     })
     return
   }
-  if (action === 'toggle-history') {
-    state.historyOpen = !state.historyOpen
-    render()
+  if (action === 'message-history') {
+    navigate('messageHistory')
+    if (messagesStatus !== 'ready') loadMessages({ silent: true })
     return
   }
   if (action === 'edit-dish') { state.moreMenuOpen = false; state.editingDish = state.selectedDish; navigate('dishForm'); return }
@@ -1404,7 +1402,7 @@ document.addEventListener('click', async (event) => {
   if (action === 'new-dish') { state.editingDish = null; navigate('dishForm') }
   if (action === 'favorites') { navigate('favorites') }
   if (action === 'messages') {
-    await Promise.all([loadMessages({ silent: true }), loadMessagePicks(state.messageTab)])
+    await Promise.all([loadMessages({ silent: true }), ...mealPeriods.map((period) => loadMessagePicks(period))])
     navigate('messages')
   }
   if (action === 'profile') { navigate('profile') }
@@ -1466,10 +1464,11 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && state.imagePreviewOpen) closeImagePreview()
   if (event.key === 'Escape' && state.showSuccessModal) closeSuccessModal()
   if (event.key === 'Escape' && state.editingMessage) {
-    const period = state.messageTab === '全部' ? null : state.messageTab
+    const period = state.editingMessagePeriod || state.mealPeriod
     const msg = todayMessageFor(period)
     state.messageDraft = msg ? splitMessageContent(msg.content) : ''
     state.editingMessage = false
+    state.editingMessagePeriod = null
     render()
     return
   }

@@ -2297,6 +2297,8 @@ textarea {
   font-size: 15px;
   line-height: 1.6;
   color: var(--ink);
+  max-height: 5.6em;
+  overflow-y: auto;
   overflow-wrap: break-word;
 }
 
@@ -2329,9 +2331,11 @@ textarea {
 
 .today-text p {
   margin: 0;
+  min-height: 0;
   font-size: 15px;
   line-height: 1.6;
   white-space: pre-wrap;
+  overflow-y: auto;
   overflow-wrap: break-word;
 }
 
@@ -2432,27 +2436,6 @@ textarea {
   margin-top: 8px;
   font-size: 11px;
   color: var(--muted);
-}
-
-.history-section {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.history-toggle {
-  padding: 12px;
-  color: var(--red);
-  background: transparent;
-  border: 1px dashed var(--line);
-  border-radius: 12px;
-  font-size: 13px;
-  cursor: pointer;
-  transition: transform .15s ease;
-}
-
-.history-toggle:active {
-  transform: scale(.98);
 }
 
 .history-list {
