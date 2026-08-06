@@ -2295,6 +2295,52 @@ textarea {
   color: var(--muted);
 }
 
+.message-edit-wrap {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+}
+
+/* 右侧固定大小的占位格：保存按钮出现时标题栏高度保持不变 */
+.header-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 24px;
+}
+
+.message-save-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background-color: var(--red);
+  color: #fff;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.message-save-btn svg {
+  width: 18px;
+  height: 18px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.message-save-btn:active {
+  opacity: 0.85;
+}
+
 .note-message textarea {
   display: block;
   flex: 1;
@@ -2332,6 +2378,13 @@ textarea {
 
 .note-message textarea:focus-visible {
   outline: 0;
+}
+
+.note-updated {
+  display: block;
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--muted);
 }
 
 .history-section {

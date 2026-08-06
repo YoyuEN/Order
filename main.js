@@ -597,11 +597,19 @@ function historyEntries() {
   return entries
 }
 
-function picksItems() {
+function rawPicksText() {
   return state.picks.map((item) => {
     const detail = [item.option, item.note].filter(Boolean).join('，')
-    return escapeHtml(item.name) + (detail ? `（${escapeHtml(detail)}）` : '')
+    return item.name + (detail ? `（${detail}）` : '')
   }).join('、')
+}
+
+function picksItems() {
+  return escapeHtml(rawPicksText())
+}
+
+function isTouchDevice() {
+  return window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window
 }
 
 let messageSaving = false
@@ -609,7 +617,18 @@ let messageSaving = false
 async function saveMessage() {
   if (messageSaving) return
   const input = document.querySelector('#message-input')
-  const content = input?.value.trim() ?? ''
+  // 保存时自动附上当天所点的餐（若有点餐）
+  const picksPrefix = state.picks.length ? `今天想吃：${rawPicksText()}` : ''
+  const userText = input?.value.trim() ?? ''
+  let content = picksPrefix ? (userText ? `${picksPrefix}\n${userText}` : picksPrefix) : userText
+  if (content.length > 500) {
+    if (picksPrefix) {
+      const remaining = 500 - picksPrefix.length - 1
+      content = remaining > 0 ? `${picksPrefix}\n${userText.slice(0, remaining)}` : picksPrefix.slice(0, 500)
+    } else {
+      content = userText.slice(0, 500)
+    }
+  }
   const saved = todayMessage()?.content
   if (content === saved) {
     state.editingMessage = false
@@ -619,8 +638,8 @@ async function saveMessage() {
   }
   messageSaving = true
   try {
+    const existing = todayMessage()
     if (!content) {
-      const existing = todayMessage()
       if (existing) {
         await apiRequest(`/api/messages/${existing.id}`, { method: 'DELETE' })
         messages = messages.filter((m) => m.id !== existing.id)
@@ -639,8 +658,13 @@ async function saveMessage() {
       }
       return
     }
-    const message = await apiRequest('/api/messages', { method: 'POST', body: JSON.stringify({ content }) })
-    messages.unshift(message)
+    // 每天只保留一条留言：今天已有留言则更新，否则新建
+    const message = existing
+      ? await apiRequest(`/api/messages/${existing.id}`, { method: 'PUT', body: JSON.stringify({ content }) })
+      : await apiRequest('/api/messages', { method: 'POST', body: JSON.stringify({ content }) })
+    messages = messages
+      .filter((m) => m.id !== message.id)
+      .concat(message)
     messagesStatus = 'ready'
     const liveDraft = document.querySelector('#message-input')?.value.trim() ?? ''
     if (liveDraft === content) {
@@ -660,17 +684,35 @@ async function saveMessage() {
   }
 }
 
+function splitMessageContent(full) {
+  // 从已保存的留言里取出纯留言部分（去掉开头的“今天想吃：…”行）
+  if (!full.startsWith('今天想吃：')) return full
+  const newline = full.indexOf('\n')
+  return newline === -1 ? '' : full.slice(newline + 1)
+}
+
+function timeOnly(value) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
+}
+
 function noteCard() {
   const msg = todayMessage()
-  const picks = state.picks.length ? `<p class="note-picks"><b>今天想吃：</b>${picksItems()}</p>` : ''
+  const showPicksRow = state.editingMessage || !msg
+  const picks = showPicksRow && state.picks.length ? `<p class="note-picks"><b>今天想吃：</b>${picksItems()}</p>` : ''
+  const updated = msg && !state.editingMessage ? `<span class="note-updated">更新于 ${formatMessageTime(msg.updatedAt || msg.createdAt)}</span>` : ''
   const body = state.editingMessage
-    ? `<textarea id="message-input" maxlength="500" rows="4" aria-label="留言内容" placeholder="写下今天想说的话…">${escapeHtml(state.messageDraft)}</textarea>`
-    : `<button class="today-text" data-action="edit-message" aria-label="点击写下或修改今天的留言">${msg ? `<p>${escapeHtml(msg.content)}</p>` : `<span class="today-empty">点击写下今天想说的话…</span>`}</button>`
+    ? `<div class="message-edit-wrap"><textarea id="message-input" maxlength="500" rows="4" aria-label="留言内容" placeholder="写下今天想说的话…">${escapeHtml(state.messageDraft)}</textarea></div>`
+    : `<button class="today-text" data-action="edit-message" aria-label="点击写下或修改今天的留言">${msg ? `<p>${escapeHtml(msg.content)}</p>` : `<span class="today-empty">点击写下今天想说的话…</span>`}</button>${updated}`
   return `<section class="note-card${state.editingMessage ? ' is-editing' : ''}">${picks}<div class="note-message">${body}</div></section>`
 }
 
 function historyItem(message) {
-  return `<li class="history-item"><time datetime="${escapeAttr(message.createdAt)}">${dayLabel(message.createdAt)}</time><p>${escapeHtml(message.content)}</p></li>`
+  const updated = message.updatedAt && message.updatedAt !== message.createdAt
+    ? ` · 更新 ${timeOnly(message.updatedAt)}`
+    : ''
+  return `<li class="history-item"><time datetime="${escapeAttr(message.createdAt)}">${dayLabel(message.createdAt)}${updated}</time><p>${escapeHtml(message.content)}</p></li>`
 }
 
 function historySection() {
@@ -686,7 +728,10 @@ function messagesView() {
     : messagesStatus === 'error'
       ? '<div class="empty" role="alert"><b>留言加载失败</b><span>无法连接服务器，请检查网络后重试</span><button class="secondary-button" data-action="retry-messages">重新加载</button></div>'
       : `${noteCard()}${historySection()}`
-  return `<main class="subpage messages-page"><header class="subpage-header"><span></span><h1>留言板</h1><span></span></header><section class="messages-content" aria-label="留言板">${content}</section>${bottomBar()}</main>`
+  const headerAction = state.editingMessage
+    ? `<span class="header-action"><button type="button" class="message-save-btn" data-action="save-message" aria-label="保存留言"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg></button></span>`
+    : '<span class="header-action"></span>'
+  return `<main class="subpage messages-page"><header class="subpage-header"><span></span><h1>留言板</h1>${headerAction}</header><section class="messages-content" aria-label="留言板">${content}</section>${bottomBar()}</main>`
 }
 
 function profileView() {
@@ -1042,10 +1087,11 @@ document.addEventListener('click', async (event) => {
   }
   if (action === 'retry-dishes') { await loadDishes(); return }
   if (action === 'retry-messages') { await loadMessages(); return }
+  if (action === 'save-message') { saveMessage(); return }
   if (action === 'edit-message') {
     const msg = todayMessage()
     state.editingMessage = true
-    state.messageDraft = msg ? msg.content : ''
+    state.messageDraft = msg ? splitMessageContent(msg.content) : ''
     render()
     window.requestAnimationFrame(() => {
       const input = document.querySelector('#message-input')
@@ -1202,12 +1248,13 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && state.showSuccessModal) closeSuccessModal()
   if (event.key === 'Escape' && state.editingMessage) {
     const msg = todayMessage()
-    state.messageDraft = msg ? msg.content : ''
+    state.messageDraft = msg ? splitMessageContent(msg.content) : ''
     state.editingMessage = false
     render()
     return
   }
-  if (event.key === 'Enter' && event.target.id === 'message-input' && !event.shiftKey) {
+  // 手机端软键盘没有 Shift 键：Enter 用于正常换行，保存交给按钮/失焦触发
+  if (event.key === 'Enter' && event.target.id === 'message-input' && !event.shiftKey && !isTouchDevice()) {
     event.preventDefault()
     saveMessage()
     return

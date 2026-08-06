@@ -103,8 +103,13 @@ export async function initializeDatabase() {
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
       content VARCHAR(500) NOT NULL,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       PRIMARY KEY (id), INDEX idx_messages_created_at (created_at)
     ) ENGINE=InnoDB`)
+    const [messageColumns] = await connection.query("SHOW COLUMNS FROM messages LIKE 'updated_at'")
+    if (!messageColumns.length) {
+      await connection.query('ALTER TABLE messages ADD COLUMN updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at')
+    }
     await connection.query(`CREATE TABLE IF NOT EXISTS app_metadata (
       metadata_key VARCHAR(100) NOT NULL,
       metadata_value VARCHAR(500) NOT NULL,
@@ -341,12 +346,13 @@ export async function setFavorite(dishId, favorite) {
 
 export async function listMessages() {
   const [rows] = await pool.query(
-    'SELECT id, content, created_at FROM messages ORDER BY id DESC LIMIT 200',
+    'SELECT id, content, created_at, updated_at FROM messages ORDER BY id DESC LIMIT 200',
   )
   return rows.map((row) => ({
     id: Number(row.id),
     content: row.content,
     createdAt: row.created_at,
+    updatedAt: row.updated_at,
   }))
 }
 
@@ -356,10 +362,23 @@ export async function createMessage(content) {
     [content],
   )
   const [[row]] = await pool.execute(
-    'SELECT id, content, created_at FROM messages WHERE id = ?',
+    'SELECT id, content, created_at, updated_at FROM messages WHERE id = ?',
     [result.insertId],
   )
-  return { id: Number(row.id), content: row.content, createdAt: row.created_at }
+  return { id: Number(row.id), content: row.content, createdAt: row.created_at, updatedAt: row.updated_at }
+}
+
+export async function updateMessage(id, content) {
+  const [result] = await pool.execute(
+    'UPDATE messages SET content = ? WHERE id = ?',
+    [content, id],
+  )
+  if (result.affectedRows === 0) return null
+  const [[row]] = await pool.execute(
+    'SELECT id, content, created_at, updated_at FROM messages WHERE id = ?',
+    [id],
+  )
+  return { id: Number(row.id), content: row.content, createdAt: row.created_at, updatedAt: row.updated_at }
 }
 
 export async function deleteMessage(id) {
