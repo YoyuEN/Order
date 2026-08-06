@@ -823,14 +823,21 @@ function onCartPointerMove(event) {
 function onCartPointerUp(event) {
   const g = cartSwipeGesture
   if (!g.active) return
-  const { item, main, swiping, startOffset } = g
+  const { item, main, swiping, startOffset, startX } = g
   g.active = false
   g.item = null
   g.main = null
-  if (!item || !main || !swiping) return
+  if (!item || !main || !swiping) {
+    // 纯点击（例如收起已滑开的条目）：保留 suppressClick，让它吞掉随后的 click
+    return
+  }
+  // 真正发生了滑动：浏览器不会产生 click，必须清掉标志，否则会“吞掉”下一次点击
+  cartSwipeGesture.suppressClick = false
   item.classList.remove('swiping')
   main.style.transform = ''
-  const total = startOffset + (event.clientX - g.startX)
+  // pointercancel（如系统接管竖向滚动）时坐标被重置为 0，不能用于计算滑动结果
+  if (event.type === 'pointercancel') return
+  const total = startOffset + (event.clientX - startX)
   item.classList.toggle('swiped', total < -CART_ACTION_WIDTH / 2)
   closeCartSwipe(item)
 }
@@ -1493,15 +1500,17 @@ document.addEventListener('click', async (event) => {
     if (!removed) return
     state.picks.splice(index, 1)
     state.ordersMenuOpen = false
-    button.disabled = true
+    // 乐观更新：先立刻刷新界面，网络同步放后台，失败再回滚
+    render()
+    showToast(`已移除「${removed.name}」`)
     try {
       await syncOrder()
-      render()
-      showToast(`已移除「${removed.name}」`)
     } catch {
-      state.picks.splice(index, 0, removed)
-      render()
-      showToast('移除失败，请检查网络后重试')
+      if (!state.picks.some((pick) => pick.key === removed.key)) {
+        state.picks.splice(Math.min(index, state.picks.length), 0, removed)
+        render()
+      }
+      showToast('移除失败，已恢复，请检查网络后重试')
     }
     return
   }
