@@ -11,6 +11,7 @@ const state = {
   category: '全部', search: '', picks: [],
   mealPeriod: '午餐', messageTab: '全部', editingMessagePeriod: null,
   orderHistory: [], orderHistoryStatus: 'idle',
+  messagePicks: [],
   selectedDish: null, editingDish: null, selectedOption: '', note: '', view: 'menu', orderNumber: '', confirmed: false, confirmedCount: 0, imagePreviewOpen: false, imagePreviewSrc: '', imagePreviewAlt: '', imagePreviewReturnSelector: null, showSuccessModal: false, moreMenuOpen: false, messageDraft: '',
 }
 
@@ -202,6 +203,21 @@ async function loadLatestOrder({ notify = false } = {}) {
     if (notify) showToast('已同步最新菜单')
   } catch {
     if (notify) showToast('菜单同步失败，请检查网络后重试')
+  }
+}
+
+async function loadMessagePicks(period) {
+  if (!mealPeriods.includes(period)) {
+    state.messagePicks = []
+    return
+  }
+  try {
+    const order = await apiRequest(`/api/orders/latest?mealPeriod=${encodeURIComponent(period)}`, { cache: 'no-store' })
+    state.messagePicks = Array.isArray(order?.items)
+      ? order.items.map((item) => ({ ...item, key: String(item.dishId) }))
+      : []
+  } catch {
+    state.messagePicks = []
   }
 }
 
@@ -718,7 +734,12 @@ async function saveMessage() {
   if (messageSaving) return
   const input = document.querySelector('#message-input')
   // 保存时自动附上当前餐次所点的餐（若有点餐）
-  const picksPrefix = state.picks.length ? `今天想吃：${rawPicksText()}` : ''
+  const picksPrefix = state.messagePicks.length
+    ? `今天想吃：${state.messagePicks.map((item) => {
+      const detail = [item.option, item.note].filter(Boolean).join('，')
+      return item.name + (detail ? `（${detail}）` : '')
+    }).join('、')}`
+    : ''
   const userText = input?.value.trim() ?? ''
   let content = picksPrefix ? (userText ? `${picksPrefix}\n${userText}` : picksPrefix) : userText
   if (content.length > 500) {
@@ -802,7 +823,11 @@ function noteCard() {
   const period = state.messageTab === '全部' ? null : state.messageTab
   const msg = todayMessageFor(period)
   const showPicksRow = state.editingMessage || !msg
-  const picks = showPicksRow && state.picks.length ? `<p class="note-picks"><b>今天想吃：</b>${picksItems()}</p>` : ''
+  const messagePicksText = escapeHtml(state.messagePicks.map((item) => {
+    const detail = [item.option, item.note].filter(Boolean).join('，')
+    return item.name + (detail ? `（${detail}）` : '')
+  }).join('、'))
+  const picks = showPicksRow && state.messagePicks.length ? `<p class="note-picks"><b>今天想吃：</b>${messagePicksText}</p>` : ''
   const updated = msg && !state.editingMessage ? `<span class="note-updated">更新于 ${formatMessageTime(msg.updatedAt || msg.createdAt)}</span>` : ''
   const body = state.editingMessage
     ? `<div class="message-edit-wrap"><textarea id="message-input" maxlength="500" rows="4" aria-label="留言内容" placeholder="写下想说的话…">${escapeHtml(state.messageDraft)}</textarea></div>`
@@ -1214,6 +1239,7 @@ document.addEventListener('click', async (event) => {
     state.messageTab = period
     state.editingMessage = false
     state.messageDraft = ''
+    await loadMessagePicks(period)
     render()
     return
   }
@@ -1345,7 +1371,10 @@ document.addEventListener('click', async (event) => {
   if (action === 'orders') { await loadLatestOrder(); if (state.orderHistoryStatus === 'idle') await loadOrderHistory(); navigate('orders') }
   if (action === 'new-dish') { state.editingDish = null; navigate('dishForm') }
   if (action === 'favorites') { navigate('favorites') }
-  if (action === 'messages') { loadMessages({ silent: true }); loadLatestOrder(); navigate('messages') }
+  if (action === 'messages') {
+    await Promise.all([loadMessages({ silent: true }), loadMessagePicks(state.messageTab)])
+    navigate('messages')
+  }
   if (action === 'profile') { navigate('profile') }
   if (action === 'clear' && window.confirm('确定清空全部已点菜品吗？')) {
     button.disabled = true
