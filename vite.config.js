@@ -30,6 +30,7 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: 'index.html',
+        globPatterns: ['**/*.{js,css,html,woff2}'],
         runtimeCaching: [{
           urlPattern: /^https:\/\/images\.unsplash\.com\//,
           handler: 'CacheFirst',

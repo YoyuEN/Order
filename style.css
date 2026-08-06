@@ -1,9 +1,12 @@
+@import url('./fonts/dist/kuaikanshijieti/index.css');
+@import url('./fonts/dist/sanjixingkai/index.css');
 @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700;800&family=Noto+Serif+SC:wght@700;900&display=swap');
 
 :root {
-  font-family: 'Noto Sans SC', system-ui, sans-serif;
+  font-family: 'KuaikanShijieti', 'Noto Sans SC', system-ui, sans-serif;
   color: #292723;
   background: #ffffff;
+  font-size: 14px;
   font-synthesis: none;
   --red: #d94b32;
   --red-dark: #b93625;
@@ -97,11 +100,11 @@ svg {
 .app-header h1,
 .section-title h2 {
   margin: 0;
-  font-family: 'Noto Serif SC', serif;
+  font-family: 'SanJiXingKaiJianTi-Cu', 'Noto Serif SC', serif;
 }
 
 .app-header h1 {
-  font-size: 25px;
+  font-size: 29px;
   line-height: 1.25;
 }
 
@@ -232,7 +235,7 @@ svg {
 }
 
 .section-title h2 {
-  font-size: 21px;
+  font-size: 25px;
 }
 
 .section-title>span {
@@ -319,8 +322,8 @@ svg {
   inset: 0;
   place-items: center;
   color: #bda98e;
-  font-family: 'Noto Serif SC';
-  font-size: 38px;
+  font-family: 'SanJiXingKaiJianTi-Cu', 'Noto Serif SC';
+  font-size: 44px;
 }
 
 .dish-image.image-fallback>span {
@@ -358,7 +361,9 @@ svg {
 
 .dish-info b {
   overflow: hidden;
-  font-size: 15px;
+  font-family: 'SanJiXingKaiJianTi-Cu', 'Noto Serif SC', serif;
+  font-size: 19px;
+  font-weight: 700;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -820,8 +825,8 @@ body.image-preview-open {
 
 .detail-sheet h1 {
   margin: 0;
-  font-family: 'Noto Serif SC';
-  font-size: 28px;
+  font-family: 'SanJiXingKaiJianTi-Cu', 'Noto Serif SC';
+  font-size: 32px;
 }
 
 .detail-desc {
@@ -1205,8 +1210,8 @@ textarea {
 
 .form-intro h2 {
   margin: 0;
-  font-family: 'Noto Serif SC';
-  font-size: 23px;
+  font-family: 'SanJiXingKaiJianTi-Cu', 'Noto Serif SC';
+  font-size: 27px;
 }
 
 .form-intro>p:last-child {
@@ -1267,8 +1272,8 @@ textarea {
   min-height: 54px;
   margin-top: 12px;
   color: var(--ink);
-  font-family: 'Noto Serif SC', serif;
-  font-size: 22px;
+  font-family: 'SanJiXingKaiJianTi-Cu', 'Noto Serif SC', serif;
+  font-size: 26px;
   font-weight: 900;
   line-height: 1.35;
 }
@@ -2098,7 +2103,9 @@ textarea {
 }
 
 .cart-item b {
-  font-size: 14px;
+  font-family: 'SanJiXingKaiJianTi-Cu', 'Noto Serif SC', serif;
+  font-size: 18px;
+  font-weight: 700;
 }
 
 .cart-item-main small {
@@ -2542,8 +2549,8 @@ textarea {
 
 .profile-card b {
   display: block;
-  font-family: 'Noto Serif SC', serif;
-  font-size: 18px;
+  font-family: 'SanJiXingKaiJianTi-Cu', 'Noto Serif SC', serif;
+  font-size: 22px;
 }
 
 .profile-card span {
@@ -2773,6 +2780,8 @@ textarea {
 
 .order-history-items b {
   color: var(--ink);
+  font-family: 'SanJiXingKaiJianTi-Cu', 'Noto Serif SC', serif;
+  font-size: 18px;
   font-weight: 600;
 }
 
@@ -2799,8 +2808,8 @@ textarea {
 
 .success-view h1 {
   margin: 2px 0;
-  font-family: 'Noto Serif SC';
-  font-size: 31px;
+  font-family: 'SanJiXingKaiJianTi-Cu', 'Noto Serif SC';
+  font-size: 35px;
 }
 
 .success-view>p:not(.eyebrow) {
@@ -2887,8 +2896,8 @@ body.modal-open {
 
 .success-modal h1 {
   margin: 2px 0;
-  font-family: 'Noto Serif SC';
-  font-size: 28px;
+  font-family: 'SanJiXingKaiJianTi-Cu', 'Noto Serif SC';
+  font-size: 32px;
 }
 
 .success-modal>p:not(.eyebrow) {
