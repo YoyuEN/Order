@@ -189,6 +189,7 @@ async function loadLatestOrder({ notify = false } = {}) {
         state.orderNumber = ''
         state.confirmed = false
         state.confirmedCount = 0
+        removeTodayOrder(state.mealPeriod)
         render()
         if (notify) showToast('已同步清空菜单')
       }
@@ -199,6 +200,13 @@ async function loadLatestOrder({ notify = false } = {}) {
     state.orderNumber = order.orderNumber
     state.confirmed = true
     state.confirmedCount = state.picks.length
+    upsertTodayOrder({
+      orderNumber: order.orderNumber,
+      mealPeriod: order.mealPeriod || state.mealPeriod,
+      status: 'confirmed',
+      createdAt: order.createdAt || new Date().toISOString(),
+      items: order.items.map((item) => ({ dishId: item.dishId, name: item.name, option: item.option, note: item.note })),
+    })
     render()
     if (notify) showToast('已同步最新菜单')
   } catch {
@@ -347,6 +355,24 @@ function clearFormDraft() {
 }
 
 function pickCount() { return state.picks.length }
+
+function upsertTodayOrder(order) {
+  const today = dayKey(new Date())
+  state.orderHistory = state.orderHistory.filter((item) =>
+    !(item.mealPeriod === order.mealPeriod && item.status === 'confirmed' && dayKey(item.createdAt) === today && item.orderNumber !== order.orderNumber)
+  )
+  const index = state.orderHistory.findIndex((item) => item.orderNumber === order.orderNumber)
+  if (index >= 0) state.orderHistory.splice(index, 1)
+  state.orderHistory.unshift(order)
+}
+
+function removeTodayOrder(mealPeriod) {
+  const today = dayKey(new Date())
+  state.orderHistory = state.orderHistory.filter((item) =>
+    !(item.mealPeriod === mealPeriod && item.status === 'confirmed' && dayKey(item.createdAt) === today)
+  )
+}
+
 function escapeHtml(value) { const div = document.createElement('div'); div.textContent = value; return div.innerHTML }
 function escapeAttr(value) { return escapeHtml(String(value)).replaceAll('"', '&quot;').replaceAll("'", '&#39;') }
 
@@ -603,7 +629,8 @@ function ordersView() {
     ${mealPeriods.map((period) => {
       const order = byPeriod[period]
       const isCurrent = period === state.mealPeriod
-      return `<button type="button" class="period-chip${isCurrent ? ' current' : ''}${order ? ' done' : ''}" data-action="select-meal-period" data-period="${period}" aria-pressed="${isCurrent}"><b>${period}</b><span>${order ? `已点 ${order.items.length} 道` : '未点'}</span></button>`
+      const count = isCurrent && state.picks.length ? state.picks.length : order?.items.length || 0
+      return `<button type="button" class="period-chip${isCurrent ? ' current' : ''}${order ? ' done' : ''}" data-action="select-meal-period" data-period="${period}" aria-pressed="${isCurrent}"><b>${period}</b><span>${count ? `已点 ${count} 道` : '未点'}</span></button>`
     }).join('')}
   </div>`
   const currentBlock = hasPicks
@@ -1096,13 +1123,18 @@ async function syncOrder() {
     state.orderNumber = ''
     state.confirmed = false
     state.confirmedCount = 0
+    removeTodayOrder(state.mealPeriod)
     return
   }
-  const order = { orderNumber: `ORD${Date.now()}`, mealPeriod: state.mealPeriod, items: state.picks }
-  await apiRequest('/api/orders', { method: 'POST', body: JSON.stringify(order) })
+  const order = { orderNumber: `ORD${Date.now()}`, mealPeriod: state.mealPeriod, items: state.picks.map((item) => ({ dishId: item.dishId, name: item.name, option: item.option, note: item.note })) }
+  const result = await apiRequest('/api/orders', { method: 'POST', body: JSON.stringify(order) })
   state.confirmedCount = pickCount()
   state.confirmed = true
   state.orderNumber = order.orderNumber
+  upsertTodayOrder({
+    id: result?.id, orderNumber: order.orderNumber, mealPeriod: order.mealPeriod,
+    status: 'confirmed', createdAt: new Date().toISOString(), items: order.items,
+  })
 }
 
 document.addEventListener('click', async (event) => {
@@ -1244,7 +1276,7 @@ document.addEventListener('click', async (event) => {
     return
   }
   if (action === 'history') {
-    if (state.orderHistoryStatus === 'idle') await loadOrderHistory()
+    await loadOrderHistory()
     navigate('history')
     return
   }
@@ -1368,7 +1400,7 @@ document.addEventListener('click', async (event) => {
   if (action === 'menu') { navigate('menu', { replace: true }) }
   if (action === 'close-form') { state.editingDish = null; goBack() }
   if (action === 'picks') { navigate('picks') }
-  if (action === 'orders') { await loadLatestOrder(); if (state.orderHistoryStatus === 'idle') await loadOrderHistory(); navigate('orders') }
+  if (action === 'orders') { await loadLatestOrder(); await loadOrderHistory(); navigate('orders') }
   if (action === 'new-dish') { state.editingDish = null; navigate('dishForm') }
   if (action === 'favorites') { navigate('favorites') }
   if (action === 'messages') {
@@ -1384,6 +1416,7 @@ document.addEventListener('click', async (event) => {
       state.orderNumber = ''
       state.confirmed = false
       state.confirmedCount = 0
+      removeTodayOrder(state.mealPeriod)
       render()
       showToast('已清空菜单')
     } catch {
