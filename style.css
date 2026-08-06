@@ -2306,7 +2306,7 @@ textarea {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  font-size: 15px;
+  font-size: 13px;
   padding: 14px 18px 24px 34px;
   background-color: var(--cream);
   background-image: repeating-linear-gradient(
@@ -2334,20 +2334,15 @@ textarea {
   background-image: none;
 }
 
-/* 编辑态：未编辑的信纸按内容自然高度排列、不被键盘弹出时压缩；正在编辑的卡保持足够大的编辑区域 */
-.messages-content.editing .note-card:not(.is-editing) {
-  flex: 0 0 auto;
-  min-height: 96px;
-}
-
-.messages-content.editing .note-card.is-editing {
+/* 编辑态：单个编辑信纸占满剩余空间，键盘弹出时不被挤压 */
+.messages-content.editing .note-card {
   flex: 1 1 40dvh;
   min-height: 220px;
 }
 
 .note-card-eyebrow {
   margin: 0 0 6px;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 800;
   letter-spacing: .12em;
   color: var(--red);
@@ -2355,7 +2350,7 @@ textarea {
 
 .note-picks {
   margin: 0;
-  font-size: 15px;
+  font-size: 13px;
   line-height: 1.6;
   color: var(--ink);
   max-height: 5.6em;
@@ -2366,6 +2361,15 @@ textarea {
 .note-picks b {
   color: var(--red);
   font-weight: 600;
+}
+
+.note-period-label {
+  display: inline-block;
+  margin-right: 6px;
+  color: var(--red);
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .note-message {
@@ -2393,7 +2397,7 @@ textarea {
 .today-text p {
   margin: 0;
   min-height: 0;
-  font-size: 15px;
+  font-size: 13px;
   line-height: 1.6;
   white-space: pre-wrap;
   overflow-y: auto;
@@ -2402,7 +2406,7 @@ textarea {
 
 .today-empty {
   display: block;
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1.6;
   color: var(--muted);
 }
@@ -2480,7 +2484,7 @@ textarea {
   outline: 0;
   -webkit-appearance: none;
   appearance: none;
-  font-size: 15px;
+  font-size: 13px;
   line-height: 1.6;
 }
 
@@ -2495,7 +2499,7 @@ textarea {
 .note-updated {
   display: block;
   margin-top: 8px;
-  font-size: 11px;
+  font-size: 10px;
   color: var(--muted);
 }
 

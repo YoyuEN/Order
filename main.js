@@ -844,26 +844,31 @@ let messageSaving = false
 async function saveMessage() {
   if (messageSaving) return
   const input = document.querySelector('#message-input')
-  // 保存时自动附上当前餐次所点的餐（若有点餐）
-  const picksPrefix = state.messagePicks.length
-    ? `今天想吃：${state.messagePicks.map((item) => {
-      const detail = [item.option, item.note].filter(Boolean).join('，')
-      return item.name + (detail ? `（${detail}）` : '')
-    }).join('、')}`
-    : ''
-  const userText = input?.value.trim() ?? ''
-  let content = picksPrefix ? (userText ? `${picksPrefix}\n${userText}` : picksPrefix) : userText
-  if (content.length > 500) {
-    if (picksPrefix) {
-      const remaining = 500 - picksPrefix.length - 1
-      content = remaining > 0 ? `${picksPrefix}\n${userText.slice(0, remaining)}` : picksPrefix.slice(0, 500)
-    } else {
-      content = userText.slice(0, 500)
+  const raw = input?.value ?? ''
+  const sections = splitDraftByPeriod(raw)
+  // 按餐次整理内容：自动附上该餐次所点的餐（若有点餐），并各自限制长度
+  const plans = mealPeriods.map((period) => {
+    const text = (sections[period] || '').trim()
+    const picks = state.messagePicksByPeriod[period] || []
+    const picksPrefix = picks.length
+      ? `今天想吃：${picks.map((item) => {
+        const detail = [item.option, item.note].filter(Boolean).join('，')
+        return item.name + (detail ? `（${detail}）` : '')
+      }).join('、')}`
+      : ''
+    let content = picksPrefix ? (text ? `${picksPrefix}\n${text}` : picksPrefix) : text
+    if (content.length > 500) {
+      if (picksPrefix) {
+        const remaining = 500 - picksPrefix.length - 1
+        content = remaining > 0 ? `${picksPrefix}\n${text.slice(0, remaining)}` : picksPrefix.slice(0, 500)
+      } else {
+        content = text.slice(0, 500)
+      }
     }
-  }
-  const mealPeriod = state.editingMessagePeriod || state.mealPeriod
-  const saved = todayMessageFor(mealPeriod)?.content
-  if (content === saved) {
+    const existing = todayMessageFor(period)
+    return { period, content, existing, changed: content !== (existing?.content || '') }
+  })
+  if (!plans.some((plan) => plan.changed)) {
     state.editingMessage = false
     state.editingMessagePeriod = null
     state.messageDraft = ''
@@ -872,37 +877,23 @@ async function saveMessage() {
   }
   messageSaving = true
   try {
-    const existing = todayMessageFor(mealPeriod)
-    if (!content) {
-      if (existing) {
-        await apiRequest(`/api/messages/${existing.id}`, { method: 'DELETE' })
-        messages = messages.filter((m) => m.id !== existing.id)
+    for (const plan of plans) {
+      if (!plan.changed) continue
+      if (!plan.content) {
+        if (plan.existing) {
+          await apiRequest(`/api/messages/${plan.existing.id}`, { method: 'DELETE' })
+          messages = messages.filter((m) => m.id !== plan.existing.id)
+        }
+        continue
       }
-      messagesStatus = 'ready'
-      const liveDraft = document.querySelector('#message-input')?.value.trim() ?? ''
-      if (liveDraft === content) {
-        state.editingMessage = false
-        state.editingMessagePeriod = null
-        state.messageDraft = ''
-        render()
-        window.requestAnimationFrame(() => document.querySelector('.note-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
-        if (existing) showToast('已清除')
-      } else {
-        state.messageDraft = liveDraft
-        render()
-      }
-      return
+      const message = plan.existing
+        ? await apiRequest(`/api/messages/${plan.existing.id}`, { method: 'PUT', body: JSON.stringify({ content: plan.content, mealPeriod: plan.period }) })
+        : await apiRequest('/api/messages', { method: 'POST', body: JSON.stringify({ content: plan.content, mealPeriod: plan.period }) })
+      messages = messages.filter((m) => m.id !== message.id).concat(message)
     }
-    // 每个餐次每天只保留一条留言：该餐次今天已有留言则更新，否则新建
-    const message = existing
-      ? await apiRequest(`/api/messages/${existing.id}`, { method: 'PUT', body: JSON.stringify({ content, mealPeriod }) })
-      : await apiRequest('/api/messages', { method: 'POST', body: JSON.stringify({ content, mealPeriod }) })
-    messages = messages
-      .filter((m) => m.id !== message.id)
-      .concat(message)
     messagesStatus = 'ready'
-    const liveDraft = document.querySelector('#message-input')?.value.trim() ?? ''
-    if (liveDraft === content) {
+    const liveDraft = document.querySelector('#message-input')?.value ?? ''
+    if (liveDraft === raw) {
       state.editingMessage = false
       state.editingMessagePeriod = null
       state.messageDraft = ''
@@ -933,20 +924,63 @@ function timeOnly(value) {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
 }
 
-function noteCard(period) {
-  const msg = todayMessageFor(period)
-  const isEditing = state.editingMessage && state.editingMessagePeriod === period
-  const messagePicks = state.messagePicksByPeriod[period] || []
-  const messagePicksText = escapeHtml(messagePicks.map((item) => {
-    const detail = [item.option, item.note].filter(Boolean).join('，')
-    return item.name + (detail ? `（${detail}）` : '')
-  }).join('、'))
-  const picks = messagePicks.length ? `<p class="note-picks"><b>今天想吃：</b>${messagePicksText}</p>` : ''
-  const updated = msg && !isEditing ? `<span class="note-updated">更新于 ${formatMessageTime(msg.updatedAt || msg.createdAt)}</span>` : ''
+function splitDraftByPeriod(raw) {
+  // 把单个编辑器里的内容按【早餐】【午餐】【晚餐】【夜宵】分节
+  const result = {}
+  mealPeriods.forEach((period) => { result[period] = '' })
+  const parts = raw.split(new RegExp(`【(${mealPeriods.join('|')})】`))
+  for (let i = 1; i < parts.length; i += 2) {
+    const text = (parts[i + 1] || '').trim()
+    if (text) result[parts[i]] = text
+  }
+  return result
+}
+
+function buildMessageDraft() {
+  // 编辑时把今天各餐次已保存的留言合并进一个编辑器
+  return mealPeriods.map((period) => {
+    const msg = todayMessageFor(period)
+    return `【${period}】${msg ? splitMessageContent(msg.content) : ''}`
+  }).join('\n')
+}
+
+function todayMessagePreview() {
+  // 查看态：按餐次展示今天已保存的留言
+  const parts = mealPeriods.map((period) => {
+    const msg = todayMessageFor(period)
+    if (!msg) return ''
+    const text = splitMessageContent(msg.content)
+    return text ? `<p><b class="note-period-label">${period}</b>${escapeHtml(text)}</p>` : ''
+  }).filter(Boolean)
+  if (!parts.length) return '<span class="today-empty">点击写下今天想说的话…</span>'
+  return parts.join('')
+}
+
+function todayMessagesUpdated() {
+  const list = todayMessages().filter((m) => m.updatedAt || m.createdAt)
+  if (!list.length) return ''
+  const latest = list.reduce((a, b) =>
+    new Date(b.updatedAt || b.createdAt) > new Date(a.updatedAt || a.createdAt) ? b : a)
+  return `更新于 ${formatMessageTime(latest.updatedAt || latest.createdAt)}`
+}
+
+function noteCard() {
+  const isEditing = state.editingMessage
+  const picksLines = mealPeriods.map((period) => {
+    const picks = state.messagePicksByPeriod[period] || []
+    if (!picks.length) return ''
+    const text = picks.map((item) => {
+      const detail = [item.option, item.note].filter(Boolean).join('，')
+      return item.name + (detail ? `（${detail}）` : '')
+    }).join('、')
+    return `<b>${period}：</b>${escapeHtml(text)}`
+  }).filter(Boolean)
+  const picks = picksLines.length ? `<p class="note-picks">${picksLines.join('<br>')}</p>` : ''
+  const updated = !isEditing ? `<span class="note-updated">${todayMessagesUpdated()}</span>` : ''
   const body = isEditing
-    ? `<div class="message-edit-wrap"><textarea id="message-input" maxlength="500" rows="4" aria-label="${period}留言内容" placeholder="写下${period}想说的话…">${escapeHtml(state.messageDraft)}</textarea></div>`
-    : `<button class="today-text" data-action="edit-message" data-period="${period}" aria-label="点击写下或修改${period}的留言">${msg ? `<p>${escapeHtml(splitMessageContent(msg.content))}</p>` : `<span class="today-empty">点击写下${period}想说的话…</span>`}</button>${updated}`
-  return `<section class="note-card${isEditing ? ' is-editing' : ''}"><p class="note-card-eyebrow">${period}</p>${picks}<div class="note-message">${body}</div></section>`
+    ? `<div class="message-edit-wrap"><textarea id="message-input" maxlength="2000" rows="12" aria-label="留言内容" placeholder="分别在「早餐」「午餐」「晚餐」「夜宵」下写下想说的话…">${escapeHtml(state.messageDraft)}</textarea></div>`
+    : `<button class="today-text" data-action="edit-message" aria-label="点击写下或修改留言">${todayMessagePreview()}</button>${updated}`
+  return `<section class="note-card${isEditing ? ' is-editing' : ''}"><p class="note-card-eyebrow">今日留言</p>${picks}<div class="note-message">${body}</div></section>`
 }
 
 function historyItem(message) {
@@ -971,7 +1005,7 @@ function messagesView() {
     ? '<div class="empty" role="status"><b>正在加载</b><span>正在从服务器读取留言</span></div>'
     : messagesStatus === 'error'
       ? '<div class="empty" role="alert"><b>留言加载失败</b><span>无法连接服务器，请检查网络后重试</span><button class="secondary-button" data-action="retry-messages">重新加载</button></div>'
-      : mealPeriods.map((period) => noteCard(period)).join('')
+      : noteCard()
   const headerAction = state.editingMessage
     ? `<span class="header-action"><button type="button" class="message-save-btn" data-action="save-message" aria-label="保存留言"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg></button></span>`
     : '<span class="header-action"></span>'
@@ -1378,14 +1412,11 @@ document.addEventListener('click', async (event) => {
   }
   if (action === 'save-message') { saveMessage(); return }
   if (action === 'edit-message') {
-    const period = button.dataset.period
-    if (!mealPeriods.includes(period)) return
     if (state.editingMessage && document.querySelector('#message-input')) await saveMessage()
-    await loadMessagePicks(period)
-    const msg = todayMessageFor(period)
+    await Promise.all(mealPeriods.map((period) => loadMessagePicks(period)))
     state.editingMessage = true
-    state.editingMessagePeriod = period
-    state.messageDraft = msg ? splitMessageContent(msg.content) : ''
+    state.editingMessagePeriod = null
+    state.messageDraft = buildMessageDraft()
     render()
     window.requestAnimationFrame(() => {
       const input = document.querySelector('#message-input')
@@ -1553,9 +1584,7 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && state.ordersMenuOpen) { state.ordersMenuOpen = false; render() }
   if (event.key === 'Escape' && state.showSuccessModal) closeSuccessModal()
   if (event.key === 'Escape' && state.editingMessage) {
-    const period = state.editingMessagePeriod || state.mealPeriod
-    const msg = todayMessageFor(period)
-    state.messageDraft = msg ? splitMessageContent(msg.content) : ''
+    state.messageDraft = buildMessageDraft()
     state.editingMessage = false
     state.editingMessagePeriod = null
     render()
