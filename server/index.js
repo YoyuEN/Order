@@ -6,7 +6,7 @@ import { mkdir } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import multer from 'multer'
 import { z } from 'zod'
-import { clearCurrentOrder, createDish, createMessage, createOrder, deleteDish, deleteMessage, getDish, getLatestOrder, initializeDatabase, listDishes, listMessages, listOrders, pool, setFavorite, updateDish, updateMessage } from './db.js'
+import { clearCurrentOrder, completeOrder, createDish, createMessage, createOrder, deleteDish, deleteMessage, getDish, getLatestOrder, initializeDatabase, listDishes, listMessages, listOrders, pool, setFavorite, updateDish, updateMessage } from './db.js'
 
 const app = express()
 const port = Number(process.env.PORT || 3001)
@@ -89,7 +89,6 @@ const idSchema = z.coerce.number().int().positive()
 
 const orderSchema = z.object({
   orderNumber: z.string().trim().min(6).max(32),
-  mealPeriod: z.string().trim().max(20).default('午餐'),
   items: z.array(z.object({
     dishId: z.number().int().positive(),
     name: z.string().trim().min(1).max(100),
@@ -173,7 +172,7 @@ app.delete('/api/dishes/:id', async (request, response, next) => {
 const favoriteSchema = z.object({ favorite: z.boolean() })
 const messageSchema = z.object({
   content: z.string().trim().min(1).max(500),
-  mealPeriod: z.string().trim().max(20).nullable().optional(),
+  orderId: z.coerce.number().int().positive().nullable().optional(),
 })
 
 app.get('/api/messages', async (_request, response, next) => {
@@ -187,8 +186,8 @@ app.get('/api/messages', async (_request, response, next) => {
 
 app.post('/api/messages', async (request, response, next) => {
   try {
-    const { content, mealPeriod } = messageSchema.parse(request.body)
-    response.status(201).json(await createMessage(content, mealPeriod ?? null))
+    const { content, orderId } = messageSchema.parse(request.body)
+    response.status(201).json(await createMessage(content, orderId ?? null))
   } catch (error) {
     next(error)
   }
@@ -196,8 +195,8 @@ app.post('/api/messages', async (request, response, next) => {
 
 app.put('/api/messages/:id', async (request, response, next) => {
   try {
-    const { content, mealPeriod } = messageSchema.parse(request.body)
-    const updated = await updateMessage(idSchema.parse(request.params.id), content, mealPeriod ?? null)
+    const { content, orderId } = messageSchema.parse(request.body)
+    const updated = await updateMessage(idSchema.parse(request.params.id), content, orderId ?? null)
     if (!updated) {
       response.status(404).json({ error: '留言不存在' })
       return
@@ -237,10 +236,9 @@ app.put('/api/dishes/:id/favorite', async (request, response, next) => {
   }
 })
 
-app.get('/api/orders/latest', async (request, response, next) => {
+app.get('/api/orders/latest', async (_request, response, next) => {
   try {
-    const mealPeriod = String(request.query.mealPeriod || '午餐')
-    const order = await getLatestOrder(mealPeriod)
+    const order = await getLatestOrder()
     if (!order) {
       response.status(204).end()
       return
@@ -262,10 +260,9 @@ app.get('/api/orders', async (request, response, next) => {
   }
 })
 
-app.delete('/api/orders/current', async (request, response, next) => {
+app.delete('/api/orders/current', async (_request, response, next) => {
   try {
-    const mealPeriod = String(request.query.mealPeriod || '午餐')
-    await clearCurrentOrder(mealPeriod)
+    await clearCurrentOrder()
     response.status(204).end()
   } catch (error) {
     next(error)
@@ -275,6 +272,19 @@ app.delete('/api/orders/current', async (request, response, next) => {
 app.post('/api/orders', async (request, response, next) => {
   try {
     response.status(201).json(await createOrder(orderSchema.parse(request.body)))
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.put('/api/orders/:id/complete', async (request, response, next) => {
+  try {
+    const completed = await completeOrder(idSchema.parse(request.params.id))
+    if (!completed) {
+      response.status(404).json({ error: '订单不存在或已结束' })
+      return
+    }
+    response.json({ id: idSchema.parse(request.params.id), status: 'completed' })
   } catch (error) {
     next(error)
   }

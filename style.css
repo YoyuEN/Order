@@ -188,45 +188,6 @@ svg {
   border-color: var(--ink);
 }
 
-.meal-tabs {
-  display: flex;
-  gap: 8px;
-  margin: 14px -14px 0;
-  padding: 0 14px 2px;
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-
-.meal-tabs::-webkit-scrollbar {
-  display: none;
-}
-
-.meal-tab {
-  flex: 0 0 auto;
-  min-height: 38px;
-  padding: 8px 20px;
-  border: 1px solid var(--line);
-  border-radius: 50px;
-  background: var(--cream);
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-}
-
-.meal-tab.active {
-  color: white;
-  background: var(--red);
-  border-color: var(--red);
-  box-shadow: 0 4px 12px rgba(217, 75, 50, .25);
-}
-
-.message-tabs {
-  margin: 0;
-  padding: 0 2px 2px;
-}
-
 .section-title {
   display: flex;
   justify-content: space-between;
@@ -1173,6 +1134,11 @@ textarea {
   margin: 0;
   font-size: 18px;
   text-align: center;
+}
+
+/* 右侧同时放「更多操作 + 结束点单」时放开第三列宽度 */
+.subpage-header:has(.header-actions) {
+  grid-template-columns: 44px 1fr auto;
 }
 
 .form-save-button {
@@ -2363,15 +2329,6 @@ textarea {
   font-weight: 600;
 }
 
-.note-period-label {
-  display: inline-block;
-  margin-right: 6px;
-  color: var(--red);
-  font-style: normal;
-  font-size: 12px;
-  font-weight: 700;
-}
-
 .note-message {
   flex: 1;
   min-height: 0;
@@ -2425,6 +2382,41 @@ textarea {
   justify-content: center;
   width: 44px;
   height: 24px;
+}
+
+/* 已点菜单页右上角：更多操作 + 结束点单 */
+.header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.end-order-btn {
+  min-height: 32px;
+  padding: 6px 14px;
+  border: 0;
+  border-radius: 50px;
+  background: var(--red);
+  color: white;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  box-shadow: 0 4px 12px rgba(217, 75, 50, .22);
+}
+
+.end-order-btn:active {
+  opacity: .85;
+}
+
+.end-order-btn:disabled {
+  opacity: .55;
+}
+
+.end-order-btn:hover {
+  background: var(--red-dark);
 }
 
 .message-save-btn {
@@ -2525,18 +2517,6 @@ textarea {
   margin-bottom: 4px;
   font-size: 11px;
   color: var(--muted);
-}
-
-.history-period {
-  display: inline-block;
-  margin-right: 6px;
-  padding: 1px 7px;
-  border-radius: 6px;
-  background: #fff0e8;
-  color: var(--red-dark);
-  font-style: normal;
-  font-size: 11px;
-  font-weight: 700;
 }
 
 .history-item p {
@@ -2679,53 +2659,6 @@ textarea {
   margin-top: 14px;
 }
 
-.period-overview {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 8px;
-  padding: 14px;
-}
-
-.period-chip {
-  display: flex;
-  min-height: 62px;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 3px;
-  padding: 8px 4px;
-  background: var(--cream);
-  border: 1px solid var(--line);
-  border-radius: 13px;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-}
-
-.period-chip b {
-  font-size: 14px;
-  color: var(--ink);
-}
-
-.period-chip span {
-  font-size: 11px;
-  color: var(--muted);
-}
-
-.period-chip.done span {
-  color: var(--green);
-  font-weight: 700;
-}
-
-.period-chip.current {
-  background: #fff4eb;
-  border-color: var(--red);
-}
-
-.period-chip.current b {
-  color: var(--red);
-}
-
 .history-page {
   display: flex;
   flex-direction: column;
@@ -2758,15 +2691,6 @@ textarea {
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 10px;
-}
-
-.period-badge {
-  padding: 3px 10px;
-  color: white;
-  background: var(--red);
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 700;
 }
 
 .order-history-head time {
@@ -2982,7 +2906,6 @@ body.modal-open {
     padding: 0;
   }
 
-  .menu-panel .meal-tabs,
   .menu-panel .categories {
     margin-right: 0;
     margin-left: 0;

@@ -6,12 +6,10 @@ let dishes = []
 let dishesStatus = 'loading'
 let messages = []
 let messagesStatus = 'loading'
-const mealPeriods = ['早餐', '午餐', '晚餐', '夜宵']
 const state = {
   category: '全部', search: '', picks: [],
-  mealPeriod: '午餐', messageTab: '全部', editingMessagePeriod: null,
+  currentOrderId: null,
   orderHistory: [], orderHistoryStatus: 'idle',
-  messagePicks: [], messagePicksByPeriod: {},
   selectedDish: null, editingDish: null, selectedOption: '', note: '', view: 'menu', orderNumber: '', confirmed: false, confirmedCount: 0, imagePreviewOpen: false, imagePreviewSrc: '', imagePreviewAlt: '', imagePreviewReturnSelector: null, showSuccessModal: false, moreMenuOpen: false, ordersMenuOpen: false, messageDraft: '',
 }
 
@@ -30,8 +28,6 @@ function navigationState(scrollY = 0) {
     view: state.view,
     selectedDishId: state.selectedDish?.id || null,
     editingDishId: state.editingDish?.id || null,
-    mealPeriod: state.mealPeriod,
-    messageTab: state.messageTab,
     scrollY,
   }
 }
@@ -40,8 +36,6 @@ function restoreNavigationState(entry) {
   state.view = entry.view || 'menu'
   state.selectedDish = entry.selectedDishId ? dishes.find((dish) => dish.id === entry.selectedDishId) || state.selectedDish : null
   state.editingDish = entry.editingDishId ? dishes.find((dish) => dish.id === entry.editingDishId) || state.editingDish : null
-  state.mealPeriod = mealPeriods.includes(entry.mealPeriod) ? entry.mealPeriod : state.mealPeriod
-  state.messageTab = ['全部', ...mealPeriods].includes(entry.messageTab) ? entry.messageTab : state.messageTab
   state.moreMenuOpen = false
   state.ordersMenuOpen = false
 }
@@ -184,53 +178,31 @@ async function loadDishes() {
 
 async function loadLatestOrder({ notify = false } = {}) {
   try {
-    const order = await apiRequest(`/api/orders/latest?mealPeriod=${encodeURIComponent(state.mealPeriod)}`, { cache: 'no-store' })
+    const order = await apiRequest('/api/orders/latest', { cache: 'no-store' })
     if (!order) {
       if (state.confirmed && state.picks.length > 0) {
         state.picks = []
         state.orderNumber = ''
         state.confirmed = false
         state.confirmedCount = 0
-        removeTodayOrder(state.mealPeriod)
+        state.currentOrderId = null
         render()
         if (notify) showToast('已同步清空菜单')
+      } else if (state.currentOrderId) {
+        state.currentOrderId = null
       }
       return
     }
     if (!order?.orderNumber || order.orderNumber === state.orderNumber || !Array.isArray(order.items)) return
     state.picks = order.items.map((item) => ({ ...item, key: String(item.dishId) }))
     state.orderNumber = order.orderNumber
+    state.currentOrderId = order.id ?? state.currentOrderId
     state.confirmed = true
     state.confirmedCount = state.picks.length
-    upsertTodayOrder({
-      orderNumber: order.orderNumber,
-      mealPeriod: order.mealPeriod || state.mealPeriod,
-      status: 'confirmed',
-      createdAt: order.createdAt || new Date().toISOString(),
-      items: order.items.map((item) => ({ dishId: item.dishId, name: item.name, option: item.option, note: item.note })),
-    })
     render()
     if (notify) showToast('已同步最新菜单')
   } catch {
     if (notify) showToast('菜单同步失败，请检查网络后重试')
-  }
-}
-
-async function loadMessagePicks(period) {
-  if (!mealPeriods.includes(period)) {
-    state.messagePicks = []
-    return
-  }
-  try {
-    const order = await apiRequest(`/api/orders/latest?mealPeriod=${encodeURIComponent(period)}`, { cache: 'no-store' })
-    const picks = Array.isArray(order?.items)
-      ? order.items.map((item) => ({ ...item, key: String(item.dishId) }))
-      : []
-    state.messagePicksByPeriod[period] = picks
-    state.messagePicks = picks
-  } catch {
-    state.messagePicks = []
-    state.messagePicksByPeriod[period] = []
   }
 }
 
@@ -247,14 +219,6 @@ async function loadOrderHistory() {
     state.orderHistoryStatus = state.orderHistory.length ? 'ready' : 'error'
   }
   render()
-}
-
-function defaultMealPeriod() {
-  const hour = new Date().getHours()
-  if (hour < 10) return '早餐'
-  if (hour < 15) return '午餐'
-  if (hour < 21) return '晚餐'
-  return '夜宵'
 }
 
 async function loadMessages({ silent = false } = {}) {
@@ -362,23 +326,6 @@ function clearFormDraft() {
 
 function pickCount() { return state.picks.length }
 
-function upsertTodayOrder(order) {
-  const today = dayKey(new Date())
-  state.orderHistory = state.orderHistory.filter((item) =>
-    !(item.mealPeriod === order.mealPeriod && item.status === 'confirmed' && dayKey(item.createdAt) === today && item.orderNumber !== order.orderNumber)
-  )
-  const index = state.orderHistory.findIndex((item) => item.orderNumber === order.orderNumber)
-  if (index >= 0) state.orderHistory.splice(index, 1)
-  state.orderHistory.unshift(order)
-}
-
-function removeTodayOrder(mealPeriod) {
-  const today = dayKey(new Date())
-  state.orderHistory = state.orderHistory.filter((item) =>
-    !(item.mealPeriod === mealPeriod && item.status === 'confirmed' && dayKey(item.createdAt) === today)
-  )
-}
-
 function escapeHtml(value) { const div = document.createElement('div'); div.textContent = value; return div.innerHTML }
 function escapeAttr(value) { return escapeHtml(String(value)).replaceAll('"', '&quot;').replaceAll("'", '&#39;') }
 
@@ -400,11 +347,8 @@ function menuView() {
     <main class="menu-layout">
       <section class="menu-panel" aria-labelledby="menu-heading">
         <div class="search-wrap">${icons.search}<label class="sr-only" for="dish-search">搜索菜品</label><input id="dish-search" type="search" placeholder="搜索想吃的菜" value="${escapeHtml(state.search)}" autocomplete="off"></div>
-        <div class="meal-tabs" role="group" aria-label="选择餐次">
-          ${mealPeriods.map((period) => `<button type="button" class="meal-tab${state.mealPeriod === period ? ' active' : ''}" data-action="select-meal-period" data-period="${period}" aria-pressed="${state.mealPeriod === period}">${period}</button>`).join('')}
-        </div>
         <nav class="categories" aria-label="菜品分类">${categories.map((category) => `<button class="category ${category === state.category ? 'active' : ''}" data-category="${escapeAttr(category)}" aria-pressed="${category === state.category}">${escapeHtml(category)}</button>`).join('')}</nav>
-        <div class="section-title"><div><p class="eyebrow">今日菜单 · ${state.mealPeriod}</p><h2 id="menu-heading">${state.category === '全部' ? '人气菜品' : escapeHtml(state.category)}</h2></div><span>${filtered.length} 道菜</span></div>
+        <div class="section-title"><div><p class="eyebrow">今日菜单</p><h2 id="menu-heading">${state.category === '全部' ? '人气菜品' : escapeHtml(state.category)}</h2></div><span>${filtered.length} 道菜</span></div>
         <div class="dish-grid">${dishGrid}</div>
       </section>
       <aside class="desktop-cart" aria-label="已点菜单">${pickedContent(true)}</aside>
@@ -611,52 +555,32 @@ function onLightboxImageClick(event) {
 }
 
 function pickedContent(desktop = false) {
-  if (!state.picks.length) return `<div class="empty cart-empty"><span class="empty-icon">${icons.list}</span><b>还没有点菜</b><span>从菜单里挑几道${state.mealPeriod}想吃的吧</span></div>`
+  if (!state.picks.length) return `<div class="empty cart-empty"><span class="empty-icon">${icons.list}</span><b>还没有点菜</b><span>从菜单里挑几道想吃的吧</span></div>`
   return `<ul class="cart-items">${state.picks.map((item, index) => `<li class="cart-item"><button class="cart-item-main" data-dish="${item.dishId}" aria-label="查看${escapeAttr(item.name)}详情"><span><b>${escapeHtml(item.name)}</b><small>${escapeHtml(item.option)}${item.note ? ` · ${escapeHtml(item.note)}` : ''}</small></span><i aria-hidden="true">›</i></button><button class="remove-item" data-action="remove-pick" data-index="${index}" aria-label="移除${escapeAttr(item.name)}">移除</button></li>`).join('')}</ul>`
 }
 
 function pickedView() {
-  return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回菜单">${icons.back}</button><h1>${state.mealPeriod}已点菜单</h1><span></span></header><section class="cart-page">${pickedContent()}</section></main>`
-}
-
-function todayOrdersByPeriod() {
-  const today = dayKey(new Date())
-  const map = {}
-  for (const order of state.orderHistory) {
-    if (order.status !== 'confirmed' && order.status !== 'completed') continue
-    if (dayKey(order.createdAt) !== today) continue
-    map[order.mealPeriod || '午餐'] = order
-  }
-  return map
+  return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回菜单">${icons.back}</button><h1>已点菜单</h1><span></span></header><section class="cart-page">${pickedContent()}</section></main>`
 }
 
 function ordersView() {
-  const byPeriod = todayOrdersByPeriod()
   const hasPicks = state.picks.length > 0
-  const periodOverview = `<div class="period-overview" role="group" aria-label="今日各餐次">
-    ${mealPeriods.map((period) => {
-      const order = byPeriod[period]
-      const isCurrent = period === state.mealPeriod
-      const count = isCurrent && state.picks.length ? state.picks.length : order?.items.length || 0
-      return `<button type="button" class="period-chip${isCurrent ? ' current' : ''}${order ? ' done' : ''}" data-action="select-meal-period" data-period="${period}" aria-pressed="${isCurrent}"><b>${period}</b><span>${count ? `已点 ${count} 道` : '未点'}</span></button>`
-    }).join('')}
-  </div>`
   const currentBlock = hasPicks
     ? `<section class="cart-page history-menu">${pickedContent()}</section>`
-    : `<div class="empty full-empty"><span class="empty-icon">${icons.receipt}</span><b>${state.mealPeriod}还没有点菜</b><span>在首页选好${state.mealPeriod}想吃的菜，这里会记录结果</span><button class="secondary-button" data-action="menu">去点${state.mealPeriod}</button></div>`
+    : `<div class="empty full-empty"><span class="empty-icon">${icons.receipt}</span><b>还没有点菜</b><span>在首页选好想吃的菜，这里会记录结果</span><button class="secondary-button" data-action="menu">去点菜</button></div>`
   const headerAction = hasPicks
-    ? `<button type="button" class="icon-button" data-action="toggle-orders-menu" aria-label="更多操作" aria-haspopup="menu" aria-expanded="${state.ordersMenuOpen}">${icons.moreHorizontal}</button>`
+    ? `<span class="header-actions"><button type="button" class="icon-button" data-action="toggle-orders-menu" aria-label="更多操作" aria-haspopup="menu" aria-expanded="${state.ordersMenuOpen}">${icons.moreHorizontal}</button><button type="button" class="end-order-btn" data-action="end-order">结束点单</button></span>`
     : '<span></span>'
   const ordersMenu = state.ordersMenuOpen && hasPicks
     ? `<div class="more-menu-dropdown" role="menu" aria-label="已点菜单操作"><button type="button" class="more-menu-item" data-action="clear" role="menuitem">${icons.trash}<span>清空已点菜单</span></button></div><button type="button" class="more-menu-backdrop" data-action="close-orders-menu" aria-label="关闭菜单"></button>`
     : ''
-  return `<main class="subpage"><header class="subpage-header"><span></span><h1>今天吃什么</h1>${headerAction}</header>${ordersMenu}${periodOverview}${currentBlock}${bottomBar()}</main>`
+  return `<main class="subpage"><header class="subpage-header"><span></span><h1>当前点单</h1>${headerAction}</header>${ordersMenu}${currentBlock}${bottomBar()}</main>`
 }
 
 function orderHistoryCard(order) {
   const items = order.items.map((item) => `<li><b>${escapeHtml(item.name)}</b><span>${escapeHtml(item.option)}${item.note ? ` · ${escapeHtml(item.note)}` : ''}</span></li>`).join('')
   return `<article class="order-history-card">
-    <div class="order-history-head"><span class="period-badge">${order.mealPeriod || '午餐'}</span><time>${formatMessageTime(order.createdAt)}</time></div>
+    <div class="order-history-head"><time>${formatMessageTime(order.createdAt)}</time></div>
     <ul class="order-history-items">${items || '<li class="order-history-empty">无菜品记录</li>'}</ul>
     <button class="secondary-button repeat-order-btn" data-action="repeat-order" data-order-id="${order.id}">再来一单</button>
   </article>`
@@ -683,7 +607,7 @@ function historyView() {
       ? '<div class="empty" role="alert"><b>记录加载失败</b><span>无法连接服务器，请检查网络后重试</span><button class="secondary-button" data-action="retry-history">重新加载</button></div>'
       : state.orderHistory.length
         ? groupOrderHistory()
-        : `<div class="empty full-empty"><span class="empty-icon">${icons.receipt}</span><b>还没有点餐记录</b><span>点过餐之后，这里会按日期保存每一餐</span><button class="secondary-button" data-action="menu">去点菜</button></div>`
+        : `<div class="empty full-empty"><span class="empty-icon">${icons.receipt}</span><b>还没有点餐记录</b><span>点单结束后，这里会按日期保存每一单</span><button class="secondary-button" data-action="menu">去点菜</button></div>`
   return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回">${icons.back}</button><h1>点餐记录</h1><span></span></header><section class="history-page">${content}</section>${bottomBar()}</main>`
 }
 
@@ -725,27 +649,20 @@ function dayLabel(value) {
   return `${d.getMonth() + 1}月${d.getDate()}日`
 }
 
-function messagePeriodKey(period) {
-  return period || null
-}
-
-function todayMessageFor(period) {
-  const today = dayKey(new Date())
-  const target = messagePeriodKey(period)
-  return messages.find((m) => dayKey(m.createdAt) === today && messagePeriodKey(m.mealPeriod) === target) || null
-}
-
-function todayMessages() {
-  const today = dayKey(new Date())
-  return messages.filter((m) => dayKey(m.createdAt) === today)
+function currentMessage() {
+  if (state.currentOrderId) {
+    const msg = messages.find((m) => m.orderId === state.currentOrderId)
+    if (msg) return msg
+  }
+  return messages.find((m) => m.orderId === null) || null
 }
 
 function historyGroups() {
-  const today = dayKey(new Date())
+  const current = currentMessage()
   const byDay = new Map()
   for (const m of messages) {
+    if (current && m.id === current.id) continue
     const key = dayKey(m.createdAt)
-    if (key === today) continue
     if (!byDay.has(key)) byDay.set(key, [])
     byDay.get(key).push(m)
   }
@@ -848,61 +765,59 @@ function isTouchDevice() {
 
 let messageSaving = false
 
-async function saveMessage() {
+async function saveMessage(rawOverride) {
   if (messageSaving) return
   const input = document.querySelector('#message-input')
-  const raw = input?.value ?? ''
-  const sections = splitDraftByPeriod(raw)
-  // 按餐次整理内容：自动附上该餐次所点的餐（若有点餐），并各自限制长度
-  const plans = mealPeriods.map((period) => {
-    const text = (sections[period] || '').trim()
-    const picks = state.messagePicksByPeriod[period] || []
-    const picksPrefix = picks.length
-      ? `今天想吃：${picks.map((item) => {
-        const detail = [item.option, item.note].filter(Boolean).join('，')
-        return item.name + (detail ? `（${detail}）` : '')
-      }).join('、')}`
-      : ''
-    let content = picksPrefix ? (text ? `${picksPrefix}\n${text}` : picksPrefix) : text
-    if (content.length > 500) {
-      if (picksPrefix) {
-        const remaining = 500 - picksPrefix.length - 1
-        content = remaining > 0 ? `${picksPrefix}\n${text.slice(0, remaining)}` : picksPrefix.slice(0, 500)
-      } else {
-        content = text.slice(0, 500)
-      }
+  const raw = rawOverride !== undefined ? rawOverride : (input?.value ?? '')
+  const text = raw.trim()
+  // 自动附上当前这单所点的菜（若有点餐），并限制长度
+  const picksPrefix = state.picks.length
+    ? `今天想吃：${state.picks.map((item) => {
+      const detail = [item.option, item.note].filter(Boolean).join('，')
+      return item.name + (detail ? `（${detail}）` : '')
+    }).join('、')}`
+    : ''
+  let content = picksPrefix ? (text ? `${picksPrefix}\n${text}` : picksPrefix) : text
+  if (content.length > 500) {
+    if (picksPrefix) {
+      const remaining = 500 - picksPrefix.length - 1
+      content = remaining > 0 ? `${picksPrefix}\n${text.slice(0, remaining)}` : picksPrefix.slice(0, 500)
+    } else {
+      content = text.slice(0, 500)
     }
-    const existing = todayMessageFor(period)
-    return { period, content, existing, changed: content !== (existing?.content || '') }
-  })
-  if (!plans.some((plan) => plan.changed)) {
+  }
+  const existing = currentMessage()
+  if (content === (existing?.content || '')) {
     state.editingMessage = false
-    state.editingMessagePeriod = null
     state.messageDraft = ''
     render()
     return
   }
   messageSaving = true
   try {
-    for (const plan of plans) {
-      if (!plan.changed) continue
-      if (!plan.content) {
-        if (plan.existing) {
-          await apiRequest(`/api/messages/${plan.existing.id}`, { method: 'DELETE' })
-          messages = messages.filter((m) => m.id !== plan.existing.id)
-        }
-        continue
+    if (!content) {
+      if (existing) {
+        await apiRequest(`/api/messages/${existing.id}`, { method: 'DELETE' })
+        messages = messages.filter((m) => m.id !== existing.id)
       }
-      const message = plan.existing
-        ? await apiRequest(`/api/messages/${plan.existing.id}`, { method: 'PUT', body: JSON.stringify({ content: plan.content, mealPeriod: plan.period }) })
-        : await apiRequest('/api/messages', { method: 'POST', body: JSON.stringify({ content: plan.content, mealPeriod: plan.period }) })
+    } else {
+      const message = existing
+        ? await apiRequest(`/api/messages/${existing.id}`, { method: 'PUT', body: JSON.stringify({ content, orderId: state.currentOrderId ?? null }) })
+        : await apiRequest('/api/messages', { method: 'POST', body: JSON.stringify({ content, orderId: state.currentOrderId ?? null }) })
       messages = messages.filter((m) => m.id !== message.id).concat(message)
     }
     messagesStatus = 'ready'
+    if (rawOverride !== undefined) {
+      // 一次性保存（例如结束点单时没有编辑器），直接完成
+      state.editingMessage = false
+      state.messageDraft = ''
+      render()
+      showToast('留言已随本单保存')
+      return
+    }
     const liveDraft = document.querySelector('#message-input')?.value ?? ''
     if (liveDraft === raw) {
       state.editingMessage = false
-      state.editingMessagePeriod = null
       state.messageDraft = ''
       render()
       window.requestAnimationFrame(() => document.querySelector('.note-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' }))
@@ -931,72 +846,42 @@ function timeOnly(value) {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`
 }
 
-function splitDraftByPeriod(raw) {
-  // 把单个编辑器里的内容按【早餐】【午餐】【晚餐】【夜宵】分节
-  const result = {}
-  mealPeriods.forEach((period) => { result[period] = '' })
-  const parts = raw.split(new RegExp(`【(${mealPeriods.join('|')})】`))
-  for (let i = 1; i < parts.length; i += 2) {
-    const text = (parts[i + 1] || '').trim()
-    if (text) result[parts[i]] = text
-  }
-  return result
-}
-
 function buildMessageDraft() {
-  // 编辑时把今天各餐次已保存的留言合并进一个编辑器
-  return mealPeriods.map((period) => {
-    const msg = todayMessageFor(period)
-    return `【${period}】${msg ? splitMessageContent(msg.content) : ''}`
-  }).join('\n')
+  // 编辑时把当前这单已保存的留言放进编辑器
+  const msg = currentMessage()
+  return msg ? splitMessageContent(msg.content) : ''
 }
 
 function todayMessagePreview() {
-  // 查看态：按餐次展示今天已保存的留言
-  const parts = mealPeriods.map((period) => {
-    const msg = todayMessageFor(period)
-    if (!msg) return ''
-    const text = splitMessageContent(msg.content)
-    return text ? `<p><b class="note-period-label">${period}</b>${escapeHtml(text)}</p>` : ''
-  }).filter(Boolean)
-  if (!parts.length) return '<span class="today-empty">点击写下今天想说的话…</span>'
-  return parts.join('')
+  // 查看态：展示当前这单已保存的留言
+  const msg = currentMessage()
+  if (!msg) return '<span class="today-empty">点击写下这单想说的话…</span>'
+  const text = splitMessageContent(msg.content)
+  return text ? `<p>${escapeHtml(text)}</p>` : '<span class="today-empty">点击写下这单想说的话…</span>'
 }
 
 function todayMessagesUpdated() {
-  const list = todayMessages().filter((m) => m.updatedAt || m.createdAt)
-  if (!list.length) return ''
-  const latest = list.reduce((a, b) =>
-    new Date(b.updatedAt || b.createdAt) > new Date(a.updatedAt || a.createdAt) ? b : a)
-  return `更新于 ${formatMessageTime(latest.updatedAt || latest.createdAt)}`
+  const msg = currentMessage()
+  if (!msg) return ''
+  return `更新于 ${formatMessageTime(msg.updatedAt || msg.createdAt)}`
 }
 
 function noteCard() {
   const isEditing = state.editingMessage
-  const picksLines = mealPeriods.map((period) => {
-    const picks = state.messagePicksByPeriod[period] || []
-    if (!picks.length) return ''
-    const text = picks.map((item) => {
-      const detail = [item.option, item.note].filter(Boolean).join('，')
-      return item.name + (detail ? `（${detail}）` : '')
-    }).join('、')
-    return `<b>${period}：</b>${escapeHtml(text)}`
-  }).filter(Boolean)
-  const picks = picksLines.length ? `<p class="note-picks">${picksLines.join('<br>')}</p>` : ''
+  const picksText = state.picks.length ? rawPicksText() : ''
+  const picks = picksText ? `<p class="note-picks"><b>今天想吃：</b>${escapeHtml(picksText)}</p>` : ''
   const updated = !isEditing ? `<span class="note-updated">${todayMessagesUpdated()}</span>` : ''
   const body = isEditing
-    ? `<div class="message-edit-wrap"><textarea id="message-input" maxlength="2000" rows="12" aria-label="留言内容" placeholder="分别在「早餐」「午餐」「晚餐」「夜宵」下写下想说的话…">${escapeHtml(state.messageDraft)}</textarea></div>`
+    ? `<div class="message-edit-wrap"><textarea id="message-input" maxlength="2000" rows="12" aria-label="留言内容" placeholder="写下这单想说的话…">${escapeHtml(state.messageDraft)}</textarea></div>`
     : `<button class="today-text" data-action="edit-message" aria-label="点击写下或修改留言">${todayMessagePreview()}</button>${updated}`
   return `<section class="note-card${isEditing ? ' is-editing' : ''}"><p class="note-card-eyebrow">今日留言</p>${picks}<div class="note-message">${body}</div></section>`
 }
 
 function historyItem(message) {
-  const period = message.mealPeriod
-  const periodBadge = period ? `<em class="history-period">${period}</em>` : ''
   const updated = message.updatedAt && message.updatedAt !== message.createdAt
     ? ` · 更新 ${timeOnly(message.updatedAt)}`
     : ''
-  return `<li class="history-item"><time datetime="${escapeAttr(message.createdAt)}">${dayLabel(message.createdAt)}${updated}</time><p>${periodBadge}${escapeHtml(message.content)}</p></li>`
+  return `<li class="history-item"><time datetime="${escapeAttr(message.createdAt)}">${dayLabel(message.createdAt)}${updated}</time><p>${escapeHtml(message.content)}</p></li>`
 }
 
 function messageHistoryView() {
@@ -1242,22 +1127,19 @@ function addDish(dish, option = dish.options[0], note = '') {
 
 async function syncOrder() {
   if (!state.picks.length) {
-    await apiRequest(`/api/orders/current?mealPeriod=${encodeURIComponent(state.mealPeriod)}`, { method: 'DELETE' })
+    await apiRequest('/api/orders/current', { method: 'DELETE' })
     state.orderNumber = ''
     state.confirmed = false
     state.confirmedCount = 0
-    removeTodayOrder(state.mealPeriod)
+    state.currentOrderId = null
     return
   }
-  const order = { orderNumber: `ORD${Date.now()}`, mealPeriod: state.mealPeriod, items: state.picks.map((item) => ({ dishId: item.dishId, name: item.name, option: item.option, note: item.note })) }
+  const order = { orderNumber: `ORD${Date.now()}`, items: state.picks.map((item) => ({ dishId: item.dishId, name: item.name, option: item.option, note: item.note })) }
   const result = await apiRequest('/api/orders', { method: 'POST', body: JSON.stringify(order) })
   state.confirmedCount = pickCount()
   state.confirmed = true
   state.orderNumber = order.orderNumber
-  upsertTodayOrder({
-    id: result?.id, orderNumber: order.orderNumber, mealPeriod: order.mealPeriod,
-    status: 'confirmed', createdAt: new Date().toISOString(), items: order.items,
-  })
+  state.currentOrderId = result?.id ?? state.currentOrderId
 }
 
 document.addEventListener('click', async (event) => {
@@ -1382,15 +1264,6 @@ document.addEventListener('click', async (event) => {
   if (action === 'retry-dishes') { await loadDishes(); return }
   if (action === 'retry-messages') { await loadMessages(); return }
   if (action === 'retry-history') { await loadOrderHistory(); return }
-  if (action === 'select-meal-period') {
-    const period = button.dataset.period
-    if (!mealPeriods.includes(period) || period === state.mealPeriod) return
-    state.mealPeriod = period
-    state.ordersMenuOpen = false
-    render()
-    await loadLatestOrder()
-    return
-  }
   if (action === 'history') {
     await loadOrderHistory()
     navigate('history')
@@ -1404,25 +1277,51 @@ document.addEventListener('click', async (event) => {
       showToast('没有可复制的菜品')
       return
     }
-    state.mealPeriod = order.mealPeriod
     state.picks = items
     button.disabled = true
     try {
       await syncOrder()
       navigate('menu', { replace: true })
-      showToast(`已按${order.mealPeriod}的菜单再点一单`)
+      showToast('已按之前的菜单再点一单')
     } catch {
       button.disabled = false
       showToast('再来一单失败，请检查网络后重试')
     }
     return
   }
+  if (action === 'end-order') {
+    button.disabled = true
+    try {
+      // 先保存未完成的留言草稿（若在留言板编辑中切到本页，用草稿保存）
+      if (state.editingMessage || state.messageDraft) {
+        const input = document.querySelector('#message-input')
+        const draft = input ? input.value : state.messageDraft
+        if (draft.trim()) await saveMessage(draft)
+      }
+      const orderId = state.currentOrderId
+      if (!orderId) {
+        showToast('没有进行中的订单')
+        return
+      }
+      await apiRequest(`/api/orders/${orderId}/complete`, { method: 'PUT' })
+      state.picks = []
+      state.ordersMenuOpen = false
+      state.orderNumber = ''
+      state.confirmed = false
+      state.confirmedCount = 0
+      state.currentOrderId = null
+      await loadOrderHistory()
+      showToast('点单已结束，已保存到点餐记录')
+      navigate('history')
+    } catch {
+      showToast('结束点单失败，请检查网络后重试')
+    }
+    return
+  }
   if (action === 'save-message') { saveMessage(); return }
   if (action === 'edit-message') {
     if (state.editingMessage && document.querySelector('#message-input')) await saveMessage()
-    await Promise.all(mealPeriods.map((period) => loadMessagePicks(period)))
     state.editingMessage = true
-    state.editingMessagePeriod = null
     state.messageDraft = buildMessageDraft()
     render()
     window.requestAnimationFrame(() => {
@@ -1524,20 +1423,20 @@ document.addEventListener('click', async (event) => {
   if (action === 'new-dish') { state.editingDish = null; navigate('dishForm') }
   if (action === 'favorites') { navigate('favorites') }
   if (action === 'messages') {
-    await Promise.all([loadMessages({ silent: true }), ...mealPeriods.map((period) => loadMessagePicks(period))])
+    await loadMessages({ silent: true })
     navigate('messages')
   }
   if (action === 'profile') { navigate('profile') }
   if (action === 'clear' && window.confirm('确定清空全部已点菜品吗？')) {
     button.disabled = true
     try {
-      await apiRequest(`/api/orders/current?mealPeriod=${encodeURIComponent(state.mealPeriod)}`, { method: 'DELETE' })
+      await apiRequest('/api/orders/current', { method: 'DELETE' })
       state.picks = []
       state.ordersMenuOpen = false
       state.orderNumber = ''
       state.confirmed = false
       state.confirmedCount = 0
-      removeTodayOrder(state.mealPeriod)
+      state.currentOrderId = null
       render()
       showToast('已清空菜单')
     } catch {
@@ -1595,7 +1494,6 @@ document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && state.editingMessage) {
     state.messageDraft = buildMessageDraft()
     state.editingMessage = false
-    state.editingMessagePeriod = null
     render()
     return
   }
@@ -1806,8 +1704,6 @@ App.addListener('backButton', ({ canGoBack }) => {
   if (canGoBack) window.history.back()
   else App.exitApp()
 })
-render()
-state.mealPeriod = defaultMealPeriod()
 render()
 loadDishes()
 loadMessages()

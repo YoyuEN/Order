@@ -114,9 +114,9 @@ export async function initializeDatabase() {
       PRIMARY KEY (id), INDEX idx_messages_created_at (created_at),
       INDEX idx_messages_period (meal_period)
     ) ENGINE=InnoDB`)
-    const [messagePeriodColumns] = await connection.query("SHOW COLUMNS FROM messages LIKE 'meal_period'")
-    if (!messagePeriodColumns.length) {
-      await connection.query('ALTER TABLE messages ADD COLUMN meal_period VARCHAR(20) NULL AFTER content')
+    const [messageOrderColumns] = await connection.query("SHOW COLUMNS FROM messages LIKE 'order_id'")
+    if (!messageOrderColumns.length) {
+      await connection.query('ALTER TABLE messages ADD COLUMN order_id BIGINT UNSIGNED NULL AFTER content')
     }
     const [messageColumns] = await connection.query("SHOW COLUMNS FROM messages LIKE 'updated_at'")
     if (!messageColumns.length) {
@@ -358,40 +358,40 @@ export async function setFavorite(dishId, favorite) {
 
 export async function listMessages() {
   const [rows] = await pool.query(
-    'SELECT id, content, meal_period, created_at, updated_at FROM messages ORDER BY id DESC LIMIT 500',
+    'SELECT id, content, order_id, created_at, updated_at FROM messages ORDER BY id DESC LIMIT 500',
   )
   return rows.map((row) => ({
     id: Number(row.id),
     content: row.content,
-    mealPeriod: row.meal_period || null,
+    orderId: row.order_id === null ? null : Number(row.order_id),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   }))
 }
 
-export async function createMessage(content, mealPeriod = null) {
+export async function createMessage(content, orderId = null) {
   const [result] = await pool.execute(
-    'INSERT INTO messages (content, meal_period) VALUES (?, ?)',
-    [content, mealPeriod],
+    'INSERT INTO messages (content, order_id) VALUES (?, ?)',
+    [content, orderId],
   )
   const [[row]] = await pool.execute(
-    'SELECT id, content, meal_period, created_at, updated_at FROM messages WHERE id = ?',
+    'SELECT id, content, order_id, created_at, updated_at FROM messages WHERE id = ?',
     [result.insertId],
   )
-  return { id: Number(row.id), content: row.content, mealPeriod: row.meal_period || null, createdAt: row.created_at, updatedAt: row.updated_at }
+  return { id: Number(row.id), content: row.content, orderId: row.order_id === null ? null : Number(row.order_id), createdAt: row.created_at, updatedAt: row.updated_at }
 }
 
-export async function updateMessage(id, content, mealPeriod = null) {
+export async function updateMessage(id, content, orderId = null) {
   const [result] = await pool.execute(
-    'UPDATE messages SET content = ?, meal_period = ? WHERE id = ?',
-    [content, mealPeriod, id],
+    'UPDATE messages SET content = ?, order_id = ? WHERE id = ?',
+    [content, orderId, id],
   )
   if (result.affectedRows === 0) return null
   const [[row]] = await pool.execute(
-    'SELECT id, content, meal_period, created_at, updated_at FROM messages WHERE id = ?',
+    'SELECT id, content, order_id, created_at, updated_at FROM messages WHERE id = ?',
     [id],
   )
-  return { id: Number(row.id), content: row.content, mealPeriod: row.meal_period || null, createdAt: row.created_at, updatedAt: row.updated_at }
+  return { id: Number(row.id), content: row.content, orderId: row.order_id === null ? null : Number(row.order_id), createdAt: row.created_at, updatedAt: row.updated_at }
 }
 
 export async function deleteMessage(id) {
@@ -401,17 +401,15 @@ export async function deleteMessage(id) {
 
 export async function createOrder(order) {
   const connection = await pool.getConnection()
-  const mealPeriod = order.mealPeriod || '午餐'
   try {
     await connection.beginTransaction()
     await connection.execute(
-      "UPDATE orders SET status = 'cancelled' WHERE status = 'confirmed' AND meal_period = ?",
-      [mealPeriod],
+      "UPDATE orders SET status = 'cancelled' WHERE status = 'confirmed'",
     )
     const [result] = await connection.execute(
       `INSERT INTO orders (order_number, table_number, meal_period, guest_count, status)
-       VALUES (?, ?, ?, ?, 'confirmed')`,
-      [order.orderNumber, '', mealPeriod, 1],
+       VALUES (?, ?, '午餐', 1, 'confirmed')`,
+      [order.orderNumber, ''],
     )
     for (const item of order.items) {
       await connection.execute(
@@ -421,7 +419,7 @@ export async function createOrder(order) {
       )
     }
     await connection.commit()
-    return { id: result.insertId, orderNumber: order.orderNumber, mealPeriod }
+    return { id: result.insertId, orderNumber: order.orderNumber }
   } catch (error) {
     await connection.rollback()
     if (error.code === 'ER_DUP_ENTRY') {
@@ -429,7 +427,7 @@ export async function createOrder(order) {
         'SELECT id, order_number FROM orders WHERE order_number = ?',
         [order.orderNumber],
       )
-      if (existing) return { id: existing.id, orderNumber: existing.order_number, mealPeriod }
+      if (existing) return { id: existing.id, orderNumber: existing.order_number }
     }
     throw error
   } finally {
@@ -437,19 +435,25 @@ export async function createOrder(order) {
   }
 }
 
-export async function clearCurrentOrder(mealPeriod = '午餐') {
+export async function clearCurrentOrder() {
   const [result] = await pool.execute(
-    "UPDATE orders SET status = 'cancelled' WHERE status = 'confirmed' AND meal_period = ?",
-    [mealPeriod],
+    "UPDATE orders SET status = 'cancelled' WHERE status = 'confirmed'",
   )
   return result.affectedRows > 0
 }
 
-export async function getLatestOrder(mealPeriod = '午餐') {
+export async function completeOrder(id) {
+  const [result] = await pool.execute(
+    "UPDATE orders SET status = 'completed' WHERE id = ? AND status = 'confirmed'",
+    [id],
+  )
+  return result.affectedRows > 0
+}
+
+export async function getLatestOrder() {
   const [[order]] = await pool.query(
     `SELECT id, order_number, meal_period, created_at
-     FROM orders WHERE status = 'confirmed' AND meal_period = ? ORDER BY id DESC LIMIT 1`,
-    [mealPeriod],
+     FROM orders WHERE status = 'confirmed' ORDER BY id DESC LIMIT 1`,
   )
   if (!order) return null
 
@@ -459,6 +463,7 @@ export async function getLatestOrder(mealPeriod = '午餐') {
     [order.id],
   )
   return {
+    id: Number(order.id),
     orderNumber: order.order_number,
     mealPeriod: order.meal_period,
     createdAt: order.created_at,
@@ -475,7 +480,7 @@ export async function listOrders({ days = 30 } = {}) {
   const [orderRows] = await pool.query(
     `SELECT id, order_number, meal_period, status, created_at
      FROM orders
-     WHERE status IN ('confirmed', 'completed') AND created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+     WHERE status = 'completed' AND created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
      ORDER BY created_at DESC, id DESC`,
     [days],
   )

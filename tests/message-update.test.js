@@ -47,21 +47,21 @@ test('更新不存在的留言返回 null', async () => {
   assert.equal(updated, null)
 })
 
-test('留言支持按餐次保存与查询', async () => {
-  const lunch = await createMessage('午餐想喝汤', '午餐')
-  createdIds.push(lunch.id)
+test('留言可以关联到订单（orderId）', async () => {
+  const linked = await createMessage('这单想说的话', 42)
+  createdIds.push(linked.id)
   const general = await createMessage('通用留言', null)
   createdIds.push(general.id)
 
   const all = await listMessages()
-  const lunchRow = all.find((m) => m.id === lunch.id)
+  const linkedRow = all.find((m) => m.id === linked.id)
   const generalRow = all.find((m) => m.id === general.id)
 
-  assert.equal(lunchRow.mealPeriod, '午餐')
-  assert.equal(generalRow.mealPeriod, null)
+  assert.equal(linkedRow.orderId, 42, '关联订单的留言应返回 orderId')
+  assert.equal(generalRow.orderId, null, '未关联的留言 orderId 应为 null')
 
-  const updated = await updateMessage(lunch.id, '午餐想喝番茄汤', '午餐')
-  assert.equal(updated.id, lunch.id)
-  assert.equal(updated.mealPeriod, '午餐')
-  assert.equal(updated.content, '午餐想喝番茄汤')
+  const updated = await updateMessage(linked.id, '这单改想说的话', 42)
+  assert.equal(updated.id, linked.id)
+  assert.equal(updated.orderId, 42)
+  assert.equal(updated.content, '这单改想说的话')
 })
