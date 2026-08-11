@@ -2528,6 +2528,35 @@ textarea {
   overflow-wrap: break-word;
 }
 
+.order-message-item .history-message-body {
+  margin-top: 2px;
+}
+
+.order-message-item .history-order-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 10%, transparent);
+  border-radius: 999px;
+}
+
+.order-message-item .history-dishes {
+  display: block;
+  margin: 0 0 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+  overflow-wrap: break-word;
+}
+
+.order-message-item .history-dishes::before {
+  content: '🍽 ';
+}
+
 .profile-page {
   padding: 20px 14px;
 }
@@ -2735,6 +2764,78 @@ textarea {
 .order-history-empty {
   color: var(--muted) !important;
   justify-content: center;
+}
+
+.order-history-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--red) 8%, transparent);
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+}
+
+.order-history-message svg {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  color: var(--red);
+}
+
+.order-history-message p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+.order-message-preview {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin-top: 12px;
+  padding: 12px 14px;
+  background: var(--cream);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+}
+
+.order-message-preview svg {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  color: var(--red);
+}
+
+.order-message-preview span {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.order-message-preview b {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.order-message-preview em {
+  font-style: normal;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .repeat-order-btn {

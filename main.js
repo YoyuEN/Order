@@ -194,9 +194,19 @@ async function loadLatestOrder({ notify = false } = {}) {
       return
     }
     if (!order?.orderNumber || order.orderNumber === state.orderNumber || !Array.isArray(order.items)) return
+    const previousOrderId = state.currentOrderId
     state.picks = order.items.map((item) => ({ ...item, key: String(item.dishId) }))
     state.orderNumber = order.orderNumber
-    state.currentOrderId = order.id ?? state.currentOrderId
+    const nextOrderId = order.id ?? state.currentOrderId
+    if (previousOrderId && previousOrderId !== nextOrderId) {
+      try {
+        // 先迁移留言再切换 currentOrderId，否则找不到旧订单的留言
+        await moveMessageToOrder(nextOrderId)
+      } catch {
+        // 留言迁移失败不阻塞同步
+      }
+    }
+    state.currentOrderId = nextOrderId
     state.confirmed = true
     state.confirmedCount = state.picks.length
     render()
@@ -565,8 +575,11 @@ function pickedView() {
 
 function ordersView() {
   const hasPicks = state.picks.length > 0
+  const currentMessageBlock = hasPicks
+    ? `<button type="button" class="order-message-preview" data-action="messages">${icons.message}<span><b>这单留言</b><em>${currentMessageText()}</em></span></button>`
+    : ''
   const currentBlock = hasPicks
-    ? `<section class="cart-page history-menu">${pickedContent()}</section>`
+    ? `<section class="cart-page history-menu">${pickedContent()}${currentMessageBlock}</section>`
     : `<div class="empty full-empty"><span class="empty-icon">${icons.receipt}</span><b>还没有点菜</b><span>在首页选好想吃的菜，这里会记录结果</span><button class="secondary-button" data-action="menu">去点菜</button></div>`
   const headerAction = hasPicks
     ? `<span class="header-actions"><button type="button" class="icon-button" data-action="toggle-orders-menu" aria-label="更多操作" aria-haspopup="menu" aria-expanded="${state.ordersMenuOpen}">${icons.moreHorizontal}</button><button type="button" class="end-order-btn" data-action="end-order">结束点单</button></span>`
@@ -579,9 +592,14 @@ function ordersView() {
 
 function orderHistoryCard(order) {
   const items = order.items.map((item) => `<li><b>${escapeHtml(item.name)}</b><span>${escapeHtml(item.option)}${item.note ? ` · ${escapeHtml(item.note)}` : ''}</span></li>`).join('')
+  const message = order.message ? splitMessageContent(order.message) : ''
+  const messageBlock = message
+    ? `<div class="order-history-message">${icons.message}<p>${escapeHtml(message)}</p></div>`
+    : ''
   return `<article class="order-history-card">
     <div class="order-history-head"><time>${formatMessageTime(order.createdAt)}</time></div>
     <ul class="order-history-items">${items || '<li class="order-history-empty">无菜品记录</li>'}</ul>
+    ${messageBlock}
     <button class="secondary-button repeat-order-btn" data-action="repeat-order" data-order-id="${order.id}">再来一单</button>
   </article>`
 }
@@ -650,11 +668,9 @@ function dayLabel(value) {
 }
 
 function currentMessage() {
-  if (state.currentOrderId) {
-    const msg = messages.find((m) => m.orderId === state.currentOrderId)
-    if (msg) return msg
-  }
-  return messages.find((m) => m.orderId === null) || null
+  // 留言只跟随当前这单；没有进行中的订单则没有活动留言
+  if (!state.currentOrderId) return null
+  return messages.find((m) => m.orderId === state.currentOrderId) || null
 }
 
 function historyGroups() {
@@ -662,7 +678,9 @@ function historyGroups() {
   const byDay = new Map()
   for (const m of messages) {
     if (current && m.id === current.id) continue
-    const key = dayKey(m.createdAt)
+    // 空占位留言（下单自动创建但未填写内容）不进入历史
+    if (!splitMessageContent(m.content)) continue
+    const key = dayKey(m.order?.createdAt || m.createdAt)
     if (!byDay.has(key)) byDay.set(key, [])
     byDay.get(key).push(m)
   }
@@ -765,6 +783,28 @@ function isTouchDevice() {
 
 let messageSaving = false
 
+// 每个新订单都会有一条专属留言：没有则创建空占位，有了则沿用（迁移到新订单）
+async function ensureMessageForOrder(orderId) {
+  if (!orderId) return null
+  const existing = messages.find((m) => m.orderId === orderId)
+  if (existing) return existing
+  const message = await apiRequest('/api/messages', { method: 'POST', body: JSON.stringify({ content: '', orderId }) })
+  if (message?.id) messages = messages.filter((m) => m.id !== message.id).concat(message)
+  return message || null
+}
+
+// 订单快照变化时，把旧订单的留言迁移到新订单；没有旧留言则初始化空占位
+async function moveMessageToOrder(orderId) {
+  if (!orderId) return
+  const previous = currentMessage()
+  if (previous) {
+    const updated = await apiRequest(`/api/messages/${previous.id}`, { method: 'PUT', body: JSON.stringify({ content: previous.content, orderId }) })
+    if (updated?.id) messages = messages.filter((m) => m.id !== updated.id).concat(updated)
+  } else {
+    await ensureMessageForOrder(orderId)
+  }
+}
+
 async function saveMessage(rawOverride) {
   if (messageSaving) return
   const input = document.querySelector('#message-input')
@@ -852,6 +892,14 @@ function buildMessageDraft() {
   return msg ? splitMessageContent(msg.content) : ''
 }
 
+function currentMessageText() {
+  // 当前这单留言的纯文本预览（无留言时给提示）
+  const msg = currentMessage()
+  if (!msg) return '点击写下这单想说的话…'
+  const text = splitMessageContent(msg.content)
+  return text || '点击写下这单想说的话…'
+}
+
 function todayMessagePreview() {
   // 查看态：展示当前这单已保存的留言
   const msg = currentMessage()
@@ -874,21 +922,29 @@ function noteCard() {
   const body = isEditing
     ? `<div class="message-edit-wrap"><textarea id="message-input" maxlength="2000" rows="12" aria-label="留言内容" placeholder="写下这单想说的话…">${escapeHtml(state.messageDraft)}</textarea></div>`
     : `<button class="today-text" data-action="edit-message" aria-label="点击写下或修改留言">${todayMessagePreview()}</button>${updated}`
-  return `<section class="note-card${isEditing ? ' is-editing' : ''}"><p class="note-card-eyebrow">今日留言</p>${picks}<div class="note-message">${body}</div></section>`
+  return `<section class="note-card${isEditing ? ' is-editing' : ''}"><p class="note-card-eyebrow">这单留言</p>${picks}<div class="note-message">${body}</div></section>`
 }
 
 function historyItem(message) {
+  const order = message.order
+  const when = order?.createdAt || message.createdAt
   const updated = message.updatedAt && message.updatedAt !== message.createdAt
     ? ` · 更新 ${timeOnly(message.updatedAt)}`
     : ''
-  return `<li class="history-item"><time datetime="${escapeAttr(message.createdAt)}">${dayLabel(message.createdAt)}${updated}</time><p>${escapeHtml(message.content)}</p></li>`
+  const dishes = order?.dishes
+    ? `<small class="history-dishes">${escapeHtml(order.dishes)}</small>`
+    : ''
+  const orderLabel = order
+    ? `<span class="history-order-label">本单 · ${timeOnly(order.createdAt)}</span>`
+    : ''
+  return `<li class="history-item order-message-item"><time datetime="${escapeAttr(when)}">${dayLabel(when)}${updated}</time><div class="history-message-body">${orderLabel}${dishes}<p>${escapeHtml(splitMessageContent(message.content))}</p></div></li>`
 }
 
 function messageHistoryView() {
   const groups = historyGroups()
   const content = groups.length
     ? groups.map((group) => `<section class="order-day-group" aria-label="${dayLabel(group.day)}的留言"><h2>${dayLabel(group.day)}</h2><ul class="history-list">${group.messages.map(historyItem).join('')}</ul></section>`).join('')
-    : `<div class="empty full-empty"><span class="empty-icon">${icons.message}</span><b>还没有留言历史</b><span>在留言板写下想说的话，这里会按日期保存</span><button class="secondary-button" data-action="messages">去留言</button></div>`
+    : `<div class="empty full-empty"><span class="empty-icon">${icons.message}</span><b>还没有留言历史</b><span>每单的留言会随订单保存在这里</span><button class="secondary-button" data-action="messages">去留言</button></div>`
   return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回">${icons.back}</button><h1>留言历史</h1><span></span></header><section class="history-page">${content}</section>${bottomBar()}</main>`
 }
 
@@ -1136,10 +1192,18 @@ async function syncOrder() {
   }
   const order = { orderNumber: `ORD${Date.now()}`, items: state.picks.map((item) => ({ dishId: item.dishId, name: item.name, option: item.option, note: item.note })) }
   const result = await apiRequest('/api/orders', { method: 'POST', body: JSON.stringify(order) })
+  const newOrderId = result?.id ?? state.currentOrderId
+  if (newOrderId && newOrderId !== state.currentOrderId) {
+    try {
+      await moveMessageToOrder(newOrderId)
+    } catch {
+      // 留言迁移失败不阻塞点单
+    }
+  }
+  state.currentOrderId = newOrderId
   state.confirmedCount = pickCount()
   state.confirmed = true
   state.orderNumber = order.orderNumber
-  state.currentOrderId = result?.id ?? state.currentOrderId
 }
 
 document.addEventListener('click', async (event) => {

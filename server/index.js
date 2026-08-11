@@ -171,7 +171,8 @@ app.delete('/api/dishes/:id', async (request, response, next) => {
 
 const favoriteSchema = z.object({ favorite: z.boolean() })
 const messageSchema = z.object({
-  content: z.string().trim().min(1).max(500),
+  // content 允许空字符串：点单时会为每个新订单初始化一条占位留言
+  content: z.string().trim().max(500),
   orderId: z.coerce.number().int().positive().nullable().optional(),
 })
 

@@ -356,20 +356,43 @@ export async function setFavorite(dishId, favorite) {
   }
 }
 
-export async function listMessages() {
-  const [rows] = await pool.query(
-    'SELECT id, content, order_id, created_at, updated_at FROM messages ORDER BY id DESC LIMIT 500',
-  )
-  return rows.map((row) => ({
+function messageRow(row) {
+  return {
     id: Number(row.id),
     content: row.content,
     orderId: row.order_id === null ? null : Number(row.order_id),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
-  }))
+    order: row.o_id === null || row.o_id === undefined
+      ? null
+      : { id: Number(row.o_id), createdAt: row.o_created_at, status: row.o_status, dishes: row.o_dishes || '' },
+  }
+}
+
+export async function listMessages() {
+  const [rows] = await pool.query(
+    `SELECT m.id, m.content, m.order_id, m.created_at, m.updated_at,
+            o.id AS o_id, o.created_at AS o_created_at, o.status AS o_status,
+            (SELECT GROUP_CONCAT(oi.dish_name SEPARATOR '、') FROM order_items oi WHERE oi.order_id = m.order_id) AS o_dishes
+     FROM messages m
+     LEFT JOIN orders o ON o.id = m.order_id
+     ORDER BY m.id DESC LIMIT 500`,
+  )
+  return rows.map(messageRow)
 }
 
 export async function createMessage(content, orderId = null) {
+  // 同一订单只保留一条留言：已存在则直接返回（用于点单初始化占位，避免重复创建）
+  if (orderId !== null) {
+    const [existingRows] = await pool.execute(
+      'SELECT id, content, order_id, created_at, updated_at FROM messages WHERE order_id = ? ORDER BY id DESC LIMIT 1',
+      [orderId],
+    )
+    if (existingRows.length) {
+      const row = existingRows[0]
+      return { id: Number(row.id), content: row.content, orderId: Number(row.order_id), createdAt: row.created_at, updatedAt: row.updated_at, order: null }
+    }
+  }
   const [result] = await pool.execute(
     'INSERT INTO messages (content, order_id) VALUES (?, ?)',
     [content, orderId],
@@ -378,7 +401,7 @@ export async function createMessage(content, orderId = null) {
     'SELECT id, content, order_id, created_at, updated_at FROM messages WHERE id = ?',
     [result.insertId],
   )
-  return { id: Number(row.id), content: row.content, orderId: row.order_id === null ? null : Number(row.order_id), createdAt: row.created_at, updatedAt: row.updated_at }
+  return { id: Number(row.id), content: row.content, orderId: row.order_id === null ? null : Number(row.order_id), createdAt: row.created_at, updatedAt: row.updated_at, order: null }
 }
 
 export async function updateMessage(id, content, orderId = null) {
@@ -503,6 +526,15 @@ export async function listOrders({ days = 30 } = {}) {
     })
     itemsByOrder.set(row.order_id, items)
   }
+  const [messageRows] = await pool.query(
+    `SELECT order_id, content FROM messages
+     WHERE order_id IN (${placeholders}) ORDER BY order_id, id DESC`,
+    ids,
+  )
+  const messageByOrder = new Map()
+  for (const row of messageRows) {
+    if (!messageByOrder.has(row.order_id)) messageByOrder.set(row.order_id, row.content)
+  }
   return orderRows.map((row) => ({
     id: Number(row.id),
     orderNumber: row.order_number,
@@ -510,5 +542,6 @@ export async function listOrders({ days = 30 } = {}) {
     status: row.status,
     createdAt: row.created_at,
     items: itemsByOrder.get(row.id) || [],
+    message: messageByOrder.get(row.id) ?? null,
   }))
 }
