@@ -1,3 +1,4 @@
+import crypto from 'node:crypto'
 import mysql from 'mysql2/promise'
 import dotenv from 'dotenv'
 import { defaultDishes } from '../menu-data.js'
@@ -121,6 +122,33 @@ export async function initializeDatabase() {
     const [messageColumns] = await connection.query("SHOW COLUMNS FROM messages LIKE 'updated_at'")
     if (!messageColumns.length) {
       await connection.query('ALTER TABLE messages ADD COLUMN updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at')
+    }
+    // 每单最多一条留言：先清理历史重复（优先保留非空内容、最新一条），再建唯一索引；order_id 为 NULL 的通用留言不受影响
+    const [messageOrderUniqueIndexes] = await connection.query("SHOW INDEX FROM messages WHERE Key_name = 'uk_messages_order'")
+    if (!messageOrderUniqueIndexes.length) {
+      const [duplicatedMessageGroups] = await connection.query(
+        `SELECT order_id FROM messages WHERE order_id IS NOT NULL
+         GROUP BY order_id HAVING COUNT(*) > 1`,
+      )
+      for (const { order_id } of duplicatedMessageGroups) {
+        const [[preferred]] = await connection.execute(
+          "SELECT id FROM messages WHERE order_id = ? AND content != '' ORDER BY id DESC LIMIT 1",
+          [order_id],
+        )
+        let keepId = preferred ? preferred.id : null
+        if (keepId === null) {
+          // 全是空占位：保留最新一条
+          const [[latest]] = await connection.execute(
+            'SELECT id FROM messages WHERE order_id = ? ORDER BY id DESC LIMIT 1',
+            [order_id],
+          )
+          keepId = latest ? latest.id : null
+        }
+        if (keepId !== null) {
+          await connection.execute('DELETE FROM messages WHERE order_id = ? AND id != ?', [order_id, keepId])
+        }
+      }
+      await connection.query('ALTER TABLE messages ADD UNIQUE KEY uk_messages_order (order_id)')
     }
     await connection.query(`CREATE TABLE IF NOT EXISTS app_metadata (
       metadata_key VARCHAR(100) NOT NULL,
@@ -300,16 +328,18 @@ export async function updateDish(id, dish) {
   const connection = await pool.getConnection()
   try {
     await connection.beginTransaction()
-    const [result] = await connection.execute(
+    // 先确认菜品存在，避免“编辑内容未变化时 affectedRows 为 0”被误判为不存在（404）
+    const [[existing]] = await connection.execute('SELECT id FROM dishes WHERE id = ?', [id])
+    if (!existing) {
+      await connection.rollback()
+      return null
+    }
+    await connection.execute(
       `UPDATE dishes
        SET category = ?, name = ?, description = ?, spicy = ?, image_url = ?
        WHERE id = ?`,
       [dish.category, dish.name, dish.desc, dish.spicy, dish.image, id],
     )
-    if (!result.affectedRows) {
-      await connection.rollback()
-      return null
-    }
     await connection.execute('DELETE FROM dish_options WHERE dish_id = ?', [id])
     await connection.execute('DELETE FROM dish_ingredients WHERE dish_id = ?', [id])
     await connection.execute('DELETE FROM dish_steps WHERE dish_id = ?', [id])
@@ -369,6 +399,17 @@ function messageRow(row) {
   }
 }
 
+function messageSummary(row) {
+  return {
+    id: Number(row.id),
+    content: row.content,
+    orderId: row.order_id === null ? null : Number(row.order_id),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    order: null,
+  }
+}
+
 export async function listMessages() {
   const [rows] = await pool.query(
     `SELECT m.id, m.content, m.order_id, m.created_at, m.updated_at,
@@ -388,33 +429,59 @@ export async function createMessage(content, orderId = null) {
       'SELECT id, content, order_id, created_at, updated_at FROM messages WHERE order_id = ? ORDER BY id DESC LIMIT 1',
       [orderId],
     )
-    if (existingRows.length) {
-      const row = existingRows[0]
-      return { id: Number(row.id), content: row.content, orderId: Number(row.order_id), createdAt: row.created_at, updatedAt: row.updated_at, order: null }
-    }
+    if (existingRows.length) return messageSummary(existingRows[0])
   }
-  const [result] = await pool.execute(
-    'INSERT INTO messages (content, order_id) VALUES (?, ?)',
-    [content, orderId],
-  )
-  const [[row]] = await pool.execute(
-    'SELECT id, content, order_id, created_at, updated_at FROM messages WHERE id = ?',
-    [result.insertId],
-  )
-  return { id: Number(row.id), content: row.content, orderId: row.order_id === null ? null : Number(row.order_id), createdAt: row.created_at, updatedAt: row.updated_at, order: null }
+  try {
+    const [result] = await pool.execute(
+      'INSERT INTO messages (content, order_id) VALUES (?, ?)',
+      [content, orderId],
+    )
+    const [[row]] = await pool.execute(
+      'SELECT id, content, order_id, created_at, updated_at FROM messages WHERE id = ?',
+      [result.insertId],
+    )
+    return messageSummary(row)
+  } catch (error) {
+    // 并发创建占位留言撞唯一索引 uk_messages_order：返回已存在的那条
+    if (error.code === 'ER_DUP_ENTRY' && orderId !== null) {
+      const [[existing]] = await pool.execute(
+        'SELECT id, content, order_id, created_at, updated_at FROM messages WHERE order_id = ? ORDER BY id DESC LIMIT 1',
+        [orderId],
+      )
+      if (existing) return messageSummary(existing)
+    }
+    throw error
+  }
 }
 
 export async function updateMessage(id, content, orderId = null) {
-  const [result] = await pool.execute(
-    'UPDATE messages SET content = ?, order_id = ? WHERE id = ?',
-    [content, orderId, id],
-  )
-  if (result.affectedRows === 0) return null
-  const [[row]] = await pool.execute(
-    'SELECT id, content, order_id, created_at, updated_at FROM messages WHERE id = ?',
-    [id],
-  )
-  return { id: Number(row.id), content: row.content, orderId: row.order_id === null ? null : Number(row.order_id), createdAt: row.created_at, updatedAt: row.updated_at }
+  const connection = await pool.getConnection()
+  try {
+    await connection.beginTransaction()
+    // 留言迁移/保存到已有留言的订单时，删除目标订单的其他留言，保证每单只有一条
+    if (orderId !== null) {
+      await connection.execute('DELETE FROM messages WHERE order_id = ? AND id != ?', [orderId, id])
+    }
+    const [result] = await connection.execute(
+      'UPDATE messages SET content = ?, order_id = ? WHERE id = ?',
+      [content, orderId, id],
+    )
+    if (result.affectedRows === 0) {
+      await connection.rollback()
+      return null
+    }
+    const [[row]] = await connection.execute(
+      'SELECT id, content, order_id, created_at, updated_at FROM messages WHERE id = ?',
+      [id],
+    )
+    await connection.commit()
+    return messageSummary(row)
+  } catch (error) {
+    await connection.rollback()
+    throw error
+  } finally {
+    connection.release()
+  }
 }
 
 export async function deleteMessage(id) {
@@ -426,32 +493,27 @@ export async function createOrder(order) {
   const connection = await pool.getConnection()
   try {
     await connection.beginTransaction()
-    await connection.execute(
-      "UPDATE orders SET status = 'cancelled' WHERE status = 'confirmed'",
-    )
+    // 取代旧单并清理历史垃圾单：只保留 completed（点餐记录）与本次新建的 confirmed，
+    // 避免每次加菜都累积一张 cancelled 死单导致表无限膨胀
+    await connection.execute("DELETE FROM orders WHERE status != 'completed'")
+    // 订单号改为服务端生成，杜绝多设备同时用客户端时间戳撞号导致的串单
+    const orderNumber = `ORD${Date.now()}${crypto.randomUUID().slice(0, 6).toUpperCase()}`
     const [result] = await connection.execute(
       `INSERT INTO orders (order_number, table_number, meal_period, guest_count, status)
-       VALUES (?, ?, '午餐', 1, 'confirmed')`,
-      [order.orderNumber, ''],
+       VALUES (?, '', '午餐', 1, 'confirmed')`,
+      [orderNumber],
     )
     for (const item of order.items) {
       await connection.execute(
         `INSERT INTO order_items (order_id, dish_id, dish_name, option_name, note, quantity)
-         VALUES (?, (SELECT id FROM dishes WHERE id = ?), ?, ?, ?, ?)`,
-        [result.insertId, item.dishId, item.name, item.option, item.note, 1],
+         VALUES (?, (SELECT id FROM dishes WHERE id = ?), ?, ?, ?, 1)`,
+        [result.insertId, item.dishId, item.name, item.option, item.note],
       )
     }
     await connection.commit()
-    return { id: result.insertId, orderNumber: order.orderNumber }
+    return { id: result.insertId, orderNumber }
   } catch (error) {
     await connection.rollback()
-    if (error.code === 'ER_DUP_ENTRY') {
-      const [[existing]] = await pool.execute(
-        'SELECT id, order_number FROM orders WHERE order_number = ?',
-        [order.orderNumber],
-      )
-      if (existing) return { id: existing.id, orderNumber: existing.order_number }
-    }
     throw error
   } finally {
     connection.release()
@@ -459,8 +521,9 @@ export async function createOrder(order) {
 }
 
 export async function clearCurrentOrder() {
+  // 清空当前菜单：删除所有未完成订单（含历史遗留的 cancelled 死单）
   const [result] = await pool.execute(
-    "UPDATE orders SET status = 'cancelled' WHERE status = 'confirmed'",
+    "DELETE FROM orders WHERE status != 'completed'",
   )
   return result.affectedRows > 0
 }

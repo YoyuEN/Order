@@ -789,7 +789,8 @@ async function ensureMessageForOrder(orderId) {
   const existing = messages.find((m) => m.orderId === orderId)
   if (existing) return existing
   const message = await apiRequest('/api/messages', { method: 'POST', body: JSON.stringify({ content: '', orderId }) })
-  if (message?.id) messages = messages.filter((m) => m.id !== message.id).concat(message)
+  // 同步本地状态：剔除同一订单的旧留言（服务端已保证每单一条）
+  if (message?.id) messages = messages.filter((m) => m.id !== message.id && m.orderId !== orderId).concat(message)
   return message || null
 }
 
@@ -799,7 +800,8 @@ async function moveMessageToOrder(orderId) {
   const previous = currentMessage()
   if (previous) {
     const updated = await apiRequest(`/api/messages/${previous.id}`, { method: 'PUT', body: JSON.stringify({ content: previous.content, orderId }) })
-    if (updated?.id) messages = messages.filter((m) => m.id !== updated.id).concat(updated)
+    // 同步本地状态：剔除同一订单的旧留言（服务端已保证每单一条）
+    if (updated?.id) messages = messages.filter((m) => m.id !== updated.id && m.orderId !== orderId).concat(updated)
   } else {
     await ensureMessageForOrder(orderId)
   }
@@ -844,7 +846,8 @@ async function saveMessage(rawOverride) {
       const message = existing
         ? await apiRequest(`/api/messages/${existing.id}`, { method: 'PUT', body: JSON.stringify({ content, orderId: state.currentOrderId ?? null }) })
         : await apiRequest('/api/messages', { method: 'POST', body: JSON.stringify({ content, orderId: state.currentOrderId ?? null }) })
-      messages = messages.filter((m) => m.id !== message.id).concat(message)
+      // 关联订单时剔除同一订单的其他旧留言，保持本地状态与服务端一致
+      messages = messages.filter((m) => m.id !== message.id && (message.orderId === null || m.orderId !== message.orderId)).concat(message)
     }
     messagesStatus = 'ready'
     if (rawOverride !== undefined) {
@@ -1190,7 +1193,8 @@ async function syncOrder() {
     state.currentOrderId = null
     return
   }
-  const order = { orderNumber: `ORD${Date.now()}`, items: state.picks.map((item) => ({ dishId: item.dishId, name: item.name, option: item.option, note: item.note })) }
+  // 订单号由服务端生成，客户端只提交菜品，避免多设备撞号串单
+  const order = { items: state.picks.map((item) => ({ dishId: item.dishId, name: item.name, option: item.option, note: item.note })) }
   const result = await apiRequest('/api/orders', { method: 'POST', body: JSON.stringify(order) })
   const newOrderId = result?.id ?? state.currentOrderId
   if (newOrderId && newOrderId !== state.currentOrderId) {
@@ -1203,7 +1207,7 @@ async function syncOrder() {
   state.currentOrderId = newOrderId
   state.confirmedCount = pickCount()
   state.confirmed = true
-  state.orderNumber = order.orderNumber
+  state.orderNumber = result?.orderNumber || ''
 }
 
 document.addEventListener('click', async (event) => {

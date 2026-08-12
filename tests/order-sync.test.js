@@ -28,16 +28,15 @@ test('另一台设备可以读取最近确认的菜单', async () => {
     options: ['标准份'],
   })
   createdDishId = Number(dish.id)
-  const orderNumber = `SYNC${stamp}`
 
-  await createOrder({
-    orderNumber,
+  const created = await createOrder({
     items: [{ dishId: createdDishId, name: dish.name, option: '标准份', note: '少盐' }],
   })
 
   const latestOrder = await getLatestOrder()
 
-  assert.equal(latestOrder.orderNumber, orderNumber)
+  assert.equal(latestOrder.id, created.id)
+  assert.match(latestOrder.orderNumber, /^ORD/, '订单号应由服务端生成')
   assert.deepEqual(latestOrder.items, [{
     dishId: createdDishId,
     name: dish.name,
@@ -57,22 +56,19 @@ test('新订单会覆盖旧的确认单（全局只有一单进行中）', async
     options: ['标准份'],
   })
   const dishId = Number(dish.id)
-  const firstNumber = `FIRST${stamp}`
-  const secondNumber = `SECOND${stamp}`
 
-  await createOrder({
-    orderNumber: firstNumber,
+  const first = await createOrder({
     items: [{ dishId, name: dish.name, option: '标准份', note: '' }],
   })
-  const first = await getLatestOrder()
-  assert.equal(first.orderNumber, firstNumber)
+  const firstNumber = first.orderNumber
 
-  await createOrder({
-    orderNumber: secondNumber,
+  const second = await createOrder({
     items: [{ dishId, name: dish.name, option: '标准份', note: '' }],
   })
-  const second = await getLatestOrder()
-  assert.equal(second.orderNumber, secondNumber, '新订单应成为最新的确认单')
+
+  assert.notEqual(second.orderNumber, firstNumber, '新订单应有新的服务端订单号')
+  const latest = await getLatestOrder()
+  assert.equal(latest.orderNumber, second.orderNumber, '新订单应成为最新的确认单')
 
   await deleteDish(dishId)
 })
@@ -88,10 +84,8 @@ test('结束点单后进入点餐记录，且不再是最新确认单', async ()
     options: ['标准份'],
   })
   const dishId = Number(dish.id)
-  const orderNumber = `DONE${stamp}`
 
   const created = await createOrder({
-    orderNumber,
     items: [{ dishId, name: dish.name, option: '标准份', note: '' }],
   })
 

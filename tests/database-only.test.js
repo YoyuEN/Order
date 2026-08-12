@@ -19,5 +19,5 @@ test('清空已点菜单会同步取消数据库中的当前菜单', () => {
   assert.match(mainSource, /apiRequest\('\/api\/orders\/current', \{ method: 'DELETE' \}\)/)
   assert.match(serverSource, /app\.delete\('\/api\/orders\/current'/)
   assert.match(databaseSource, /export async function clearCurrentOrder/)
-  assert.match(databaseSource, /UPDATE orders SET status = 'cancelled' WHERE status = 'confirmed'/)
+  assert.match(databaseSource, /DELETE FROM orders WHERE status != 'completed'/)
 })

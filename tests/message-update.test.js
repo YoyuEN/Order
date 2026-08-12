@@ -100,7 +100,6 @@ test('同一订单重复创建留言是幂等的（每单一条留言）', async
   createdDishIds.push(Number(dish.id))
 
   const created = await createOrder({
-    orderNumber: `MSGIDEMP${stamp}`,
     items: [{ dishId: Number(dish.id), name: dish.name, option: '标准份', note: '' }],
   })
   const orderId = created.id
@@ -133,7 +132,6 @@ test('留言列表联查订单信息（订单时间与菜品）', async () => {
   createdDishIds.push(Number(dish.id))
 
   const created = await createOrder({
-    orderNumber: `MSGLINK${stamp}`,
     items: [{ dishId: Number(dish.id), name: dish.name, option: '标准份', note: '' }],
   })
   createdOrderIds.push(created.id)
@@ -169,7 +167,6 @@ test('点餐记录联查每单留言', async () => {
   createdDishIds.push(Number(dish.id))
 
   const created = await createOrder({
-    orderNumber: `MSGHIST${stamp}`,
     items: [{ dishId: Number(dish.id), name: dish.name, option: '标准份', note: '' }],
   })
   createdOrderIds.push(created.id)

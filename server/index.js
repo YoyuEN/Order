@@ -87,8 +87,8 @@ const dishSchema = z.object({
 
 const idSchema = z.coerce.number().int().positive()
 
+// 订单号由服务端生成（createOrder 内），避免多设备客户端用时间戳撞号
 const orderSchema = z.object({
-  orderNumber: z.string().trim().min(6).max(32),
   items: z.array(z.object({
     dishId: z.number().int().positive(),
     name: z.string().trim().min(1).max(100),
