@@ -1721,8 +1721,17 @@ document.addEventListener('submit', async (event) => {
 document.addEventListener('input', (event) => {
   if (event.target.id === 'dish-search') {
     if (shouldSkipSearchRender(event)) return
-    state.search = event.target.value
+    const input = event.target
+    const selectionStart = input.selectionStart ?? input.value.length
+    const selectionEnd = input.selectionEnd ?? input.value.length
+    state.search = input.value
     render()
+    const nextInput = document.querySelector('#dish-search')
+    if (!nextInput) return
+    nextInput.focus()
+    const start = Math.min(selectionStart, nextInput.value.length)
+    const end = Math.min(selectionEnd, nextInput.value.length)
+    nextInput.setSelectionRange(start, end)
     return
   }
   if (event.target.id === 'message-input') { state.messageDraft = event.target.value; return }
@@ -1731,8 +1740,14 @@ document.addEventListener('input', (event) => {
 
 document.addEventListener('compositionend', (event) => {
   if (event.target.id !== 'dish-search') return
-  state.search = event.target.value
+  const input = event.target
+  state.search = input.value
   render()
+  const nextInput = document.querySelector('#dish-search')
+  if (!nextInput) return
+  nextInput.focus()
+  const selection = input.selectionStart ?? input.value.length
+  nextInput.setSelectionRange(selection, selection)
 })
 
 document.addEventListener('focusout', (event) => {
