@@ -6,7 +6,7 @@ import { mkdir } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import multer from 'multer'
 import { z } from 'zod'
-import { clearCurrentOrder, completeOrder, createDish, createMessage, createOrder, deleteDish, deleteMessage, getDish, getLatestOrder, initializeDatabase, listDishes, listMessages, listOrders, pool, setFavorite, updateDish, updateMessage } from './db.js'
+import { clearCurrentOrder, completeOrder, createDish, createMessage, createOrder, createUser, deleteDish, deleteMessage, getDish, getLatestOrder, getUserByUsername, initializeDatabase, listDishes, listMessages, listOrders, pool, setFavorite, updateDish, updateMessage } from './db.js'
 
 const app = express()
 const port = Number(process.env.PORT || 3001)
@@ -112,6 +112,18 @@ app.use('/uploads', express.static(path.join(projectRoot, 'uploads'), {
   },
 }))
 
+const loginSchema = z.object({
+  username: z.string().trim().min(1).max(50),
+  password: z.string().trim().min(1).max(100),
+})
+
+const createUserSchema = z.object({
+  username: z.string().trim().min(1).max(50),
+  password: z.string().trim().min(1).max(100),
+  displayName: z.string().trim().max(100).optional(),
+  role: z.enum(['admin', 'staff']).optional(),
+})
+
 const dishSchema = z.object({
   category: z.string().trim().max(50).default(''),
   name: z.string().trim().min(1).max(100),
@@ -158,9 +170,57 @@ app.get('/api/health', async (_request, response, next) => {
   }
 })
 
-app.get('/api/dishes', async (_request, response, next) => {
+app.post('/api/auth/login', async (request, response, next) => {
   try {
-    response.json(await listDishes())
+    const { username, password } = loginSchema.parse(request.body)
+    const user = await getUserByUsername(username)
+    if (!user) {
+      response.status(401).json({ error: '暂无可用账号，请联系管理员申请账户后再登录。' })
+      return
+    }
+    const passwordHash = crypto.createHash('sha256').update(password).digest('hex')
+    if (user.password_hash !== passwordHash) {
+      response.status(401).json({ error: '暂无可用账号，请联系管理员申请账户后再登录。' })
+      return
+    }
+    response.json({
+      id: Number(user.id),
+      username: user.username,
+      displayName: user.display_name || user.username,
+      role: user.role,
+    })
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.post('/api/users', async (request, response, next) => {
+  try {
+    const currentUserId = Number(request.get('X-User-Id') || 0)
+    const [userRows] = await pool.execute('SELECT role FROM users WHERE id = ? LIMIT 1', [currentUserId])
+    if (!currentUserId || !userRows.length || userRows[0].role !== 'admin') {
+      response.status(403).json({ error: '只有管理员才能创建用户' })
+      return
+    }
+
+    const payload = createUserSchema.parse(request.body)
+    const created = await createUser({
+      username: payload.username,
+      password: payload.password,
+      displayName: payload.displayName || payload.username,
+      role: payload.role || 'staff',
+    })
+
+    response.status(201).json(created)
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.get('/api/dishes', async (request, response, next) => {
+  try {
+    const userId = Number(request.get('X-User-Id') || 0)
+    response.json(await listDishes(userId || null))
   } catch (error) {
     next(error)
   }

@@ -7,7 +7,7 @@
     "dev": "concurrently \"vite\" \"node server/index.js\"",
     "dev:api": "node server/index.js",
     "start": "node server/index.js",
-    "test": "node --test tests",
+    "test": "node --test tests/*.test.js",
     "build": "vite build",
     "preview": "vite preview",
     "android:add": "cap add android",

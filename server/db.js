@@ -70,6 +70,26 @@ export async function initializeDatabase() {
     if (!stepImageColumns.length) {
       await connection.query('ALTER TABLE dish_steps ADD COLUMN image_url VARCHAR(1000) NULL AFTER instruction')
     }
+    await connection.query(`CREATE TABLE IF NOT EXISTS users (
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+          username VARCHAR(50) NOT NULL,
+          password_hash VARCHAR(255) NOT NULL,
+          display_name VARCHAR(100) NOT NULL DEFAULT '',
+          role ENUM('admin','staff') NOT NULL DEFAULT 'staff',
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (id), UNIQUE KEY uk_users_username (username)
+        ) ENGINE=InnoDB`)
+    await connection.query(`CREATE TABLE IF NOT EXISTS user_menu_dishes (
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+          user_id BIGINT UNSIGNED NOT NULL,
+          dish_id BIGINT UNSIGNED NOT NULL,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          PRIMARY KEY (id), UNIQUE KEY uk_user_menu_dishes (user_id, dish_id),
+          INDEX idx_user_menu_dishes_user_id (user_id),
+          CONSTRAINT fk_user_menu_dishes_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+          CONSTRAINT fk_user_menu_dishes_dish FOREIGN KEY (dish_id) REFERENCES dishes(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB`)
     await connection.query(`CREATE TABLE IF NOT EXISTS orders (
           id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
           order_number VARCHAR(32) NOT NULL,
@@ -154,8 +174,40 @@ export async function initializeDatabase() {
         ['default_dishes_version', '1'],
       )
     }
+    await ensureAdminUserAssignment(connection)
   } finally {
     connection.release()
+  }
+}
+
+async function ensureAdminUserAssignment(connection) {
+  const [adminRows] = await connection.execute(
+    'SELECT id FROM users WHERE username = ? LIMIT 1',
+    ['admin'],
+  )
+  const adminUserId = adminRows[0]?.id
+  if (!adminUserId) {
+    const passwordHash = crypto.createHash('sha256').update('admin123').digest('hex')
+    const [result] = await connection.execute(
+      'INSERT INTO users (username, password_hash, display_name, role) VALUES (?, ?, ?, ?)',
+      ['admin', passwordHash, '管理员', 'admin'],
+    )
+    const createdAdminId = Number(result.insertId)
+    const [dishes] = await connection.query('SELECT id FROM dishes')
+    for (const dish of dishes) {
+      await connection.execute(
+        'INSERT IGNORE INTO user_menu_dishes (user_id, dish_id) VALUES (?, ?)',
+        [createdAdminId, dish.id],
+      )
+    }
+    return
+  }
+  const [dishes] = await connection.query('SELECT id FROM dishes')
+  for (const dish of dishes) {
+    await connection.execute(
+      'INSERT IGNORE INTO user_menu_dishes (user_id, dish_id) VALUES (?, ?)',
+      [adminUserId, dish.id],
+    )
   }
 }
 
@@ -188,44 +240,167 @@ async function seedMissingDefaultDishes(connection) {
   }
 }
 
-export async function listDishes() {
-  const [dishRows] = await pool.query(
-      `SELECT id, category, name, description, spicy, badge, image_url, sold_out,
-           EXISTS(SELECT 1 FROM favorites f WHERE f.dish_id = dishes.id) AS favorite
-     FROM dishes ORDER BY id`,
+export async function getUserByUsername(username) {
+  const [rows] = await pool.execute(
+    'SELECT id, username, password_hash, display_name, role FROM users WHERE username = ? LIMIT 1',
+    [username],
   )
-  const [optionRows] = await pool.query(
-    'SELECT dish_id, option_name FROM dish_options ORDER BY dish_id, sort_order, id',
+  return rows[0] || null
+}
+
+export async function getUserById(userId) {
+  const [rows] = await pool.execute(
+    'SELECT id, username, display_name, role FROM users WHERE id = ? LIMIT 1',
+    [userId],
   )
-  const [ingredientRows] = await pool.query(
-    'SELECT dish_id, ingredient_name, amount FROM dish_ingredients ORDER BY dish_id, sort_order, id',
+  return rows[0] || null
+}
+
+export async function createUser({ username, password, displayName, role = 'staff' }) {
+  const normalizedName = String(username || '').trim()
+  const normalizedPassword = String(password || '').trim()
+  const normalizedDisplayName = String(displayName || '').trim() || normalizedName
+  if (!normalizedName || !normalizedPassword) throw new Error('用户名和密码不能为空')
+
+  const passwordHash = crypto.createHash('sha256').update(normalizedPassword).digest('hex')
+  const [result] = await pool.execute(
+    'INSERT INTO users (username, password_hash, display_name, role) VALUES (?, ?, ?, ?)',
+    [normalizedName, passwordHash, normalizedDisplayName, role === 'admin' ? 'admin' : 'staff'],
   )
-  const [stepRows] = await pool.query(
-    'SELECT dish_id, instruction, image_url FROM dish_steps ORDER BY dish_id, sort_order, id',
+
+  return {
+    id: Number(result.insertId),
+    username: normalizedName,
+    displayName: normalizedDisplayName,
+    role: role === 'admin' ? 'admin' : 'staff',
+  }
+}
+
+export async function setUserMenuDishIds(userId, dishIds) {
+  const nextDishIds = Array.from(new Set((dishIds || []).map((dishId) => Number(dishId)).filter((dishId) => Number.isFinite(dishId) && dishId > 0)))
+  const [userRows] = await pool.execute('SELECT id, role FROM users WHERE id = ? LIMIT 1', [userId])
+  if (!userRows.length) throw new Error('用户不存在')
+
+  const connection = await pool.getConnection()
+  try {
+    await connection.beginTransaction()
+    await connection.execute('DELETE FROM user_menu_dishes WHERE user_id = ?', [userId])
+    if (nextDishIds.length > 0) {
+      const placeholders = nextDishIds.map(() => '?').join(',')
+      const values = nextDishIds.flatMap((dishId) => [userId, dishId])
+      await connection.query(
+        `INSERT INTO user_menu_dishes (user_id, dish_id) VALUES ${nextDishIds.map(() => '(?, ?)').join(', ')}`,
+        values,
+      )
+    }
+    await connection.commit()
+    return nextDishIds
+  } catch (error) {
+    await connection.rollback()
+    throw error
+  } finally {
+    connection.release()
+  }
+}
+
+export async function getUserMenuDishIds(userId) {
+  const [userRows] = await pool.execute('SELECT role FROM users WHERE id = ? LIMIT 1', [userId])
+  if (!userRows.length) return []
+  if (userRows[0].role === 'admin') {
+    const [rows] = await pool.query('SELECT id FROM dishes ORDER BY id')
+    return rows.map((row) => Number(row.id))
+  }
+  const [rows] = await pool.execute(
+    'SELECT dish_id FROM user_menu_dishes WHERE user_id = ? ORDER BY dish_id',
+    [userId],
   )
+  return rows.map((row) => Number(row.dish_id))
+}
+
+export async function listDishes(userId = null) {
+  let allowedDishIds = null
+  if (userId) {
+    const [userRows] = await pool.execute('SELECT role FROM users WHERE id = ? LIMIT 1', [userId])
+    if (!userRows.length) return []
+    if (userRows[0].role !== 'admin') {
+      allowedDishIds = await getUserMenuDishIds(userId)
+      if (!allowedDishIds.length) return []
+    }
+  }
+
+  let query = `SELECT id, category, name, description, spicy, badge, image_url, sold_out,
+      EXISTS(SELECT 1 FROM favorites f WHERE f.dish_id = dishes.id) AS favorite
+      FROM dishes`
+  const params = []
+  if (Array.isArray(allowedDishIds) && allowedDishIds.length > 0) {
+    query += ` WHERE id IN (${allowedDishIds.map(() => '?').join(',')})`
+    params.push(...allowedDishIds)
+  }
+  query += ' ORDER BY id'
+  const [dishRows] = await pool.query(query, params)
+
+  const optionDishIds = dishRows.map((row) => Number(row.id))
+  let optionRows = []
+  if (optionDishIds.length) {
+    const placeholders = optionDishIds.map(() => '?').join(',')
+    ;[optionRows] = await pool.query(
+      `SELECT dish_id, option_name FROM dish_options WHERE dish_id IN (${placeholders}) ORDER BY dish_id, sort_order, id`,
+      optionDishIds,
+    )
+  }
+
+  let ingredientRows = []
+  if (optionDishIds.length) {
+    const placeholders = optionDishIds.map(() => '?').join(',')
+    ;[ingredientRows] = await pool.query(
+      `SELECT dish_id, ingredient_name, amount FROM dish_ingredients WHERE dish_id IN (${placeholders}) ORDER BY dish_id, sort_order, id`,
+      optionDishIds,
+    )
+  }
+
+  let stepRows = []
+  if (optionDishIds.length) {
+    const placeholders = optionDishIds.map(() => '?').join(',')
+    ;[stepRows] = await pool.query(
+      `SELECT dish_id, instruction, image_url FROM dish_steps WHERE dish_id IN (${placeholders}) ORDER BY dish_id, sort_order, id`,
+      optionDishIds,
+    )
+  }
+
   const optionsByDish = new Map()
   for (const row of optionRows) {
     const options = optionsByDish.get(String(row.dish_id)) || []
     options.push(row.option_name)
     optionsByDish.set(String(row.dish_id), options)
   }
+
   const ingredientsByDish = new Map()
   for (const row of ingredientRows) {
     const ingredients = ingredientsByDish.get(String(row.dish_id)) || []
     ingredients.push({ name: row.ingredient_name, amount: row.amount })
     ingredientsByDish.set(String(row.dish_id), ingredients)
   }
+
   const stepsByDish = new Map()
   for (const row of stepRows) {
     const steps = stepsByDish.get(String(row.dish_id)) || []
     steps.push({ instruction: row.instruction, image: row.image_url || null })
     stepsByDish.set(String(row.dish_id), steps)
   }
+
   return dishRows.map((row) => ({
-    id: Number(row.id), category: row.category, name: row.name, desc: row.description,
-      sales: 0, spicy: row.spicy, badge: row.badge || undefined,
-    image: row.image_url || '/icons/icon.svg', soldOut: Boolean(row.sold_out),
-      custom: false, favorite: Boolean(row.favorite), options: optionsByDish.get(String(row.id)) || ['标准份'],
+    id: Number(row.id),
+    category: row.category,
+    name: row.name,
+    desc: row.description,
+    sales: 0,
+    spicy: row.spicy,
+    badge: row.badge || undefined,
+    image: row.image_url || '/icons/icon.svg',
+    soldOut: Boolean(row.sold_out),
+    custom: false,
+    favorite: Boolean(row.favorite),
+    options: optionsByDish.get(String(row.id)) || ['标准份'],
     ingredients: ingredientsByDish.get(String(row.id)) || [],
     steps: stepsByDish.get(String(row.id)) || [],
   }))

@@ -2,6 +2,7 @@ import './style.css'
 import { registerSW } from 'virtual:pwa-register'
 import { App } from '@capacitor/app'
 import { shouldSkipSearchRender } from './search-ime.js'
+import { ADMIN_CONTACT_MESSAGE, getCurrentUser, loginUser, logoutUser } from './user-auth.js'
 
 let dishes = []
 let dishesStatus = 'loading'
@@ -11,7 +12,10 @@ const state = {
   category: '全部', search: '', picks: [],
   currentOrderId: null,
   orderHistory: [], orderHistoryStatus: 'idle',
-  selectedDish: null, editingDish: null, selectedOption: '', note: '', view: 'menu', orderNumber: '', confirmed: false, confirmedCount: 0, imagePreviewOpen: false, imagePreviewSrc: '', imagePreviewAlt: '', imagePreviewReturnSelector: null, showSuccessModal: false, moreMenuOpen: false, ordersMenuOpen: false, messageDraft: '',
+  selectedDish: null, editingDish: null, selectedOption: '', note: '', view: 'login', orderNumber: '', confirmed: false, confirmedCount: 0, imagePreviewOpen: false, imagePreviewSrc: '', imagePreviewAlt: '', imagePreviewReturnSelector: null, showSuccessModal: false, moreMenuOpen: false, ordersMenuOpen: false, messageDraft: '',
+  currentUser: getCurrentUser(),
+  authError: '',
+  createUserError: '',
 }
 
 const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
@@ -75,6 +79,7 @@ async function apiRequest(path, options = {}) {
     const token = localStorage.getItem('api_token') || ''
     const headers = { 'Content-Type': 'application/json', ...options.headers }
     if (token) headers['X-Api-Token'] = token
+    if (state.currentUser?.id) headers['X-User-Id'] = String(state.currentUser.id)
 
     const response = await fetch(`${apiBaseUrl}${path}`, {
       ...options,
@@ -979,20 +984,49 @@ function messagesView() {
   return `<main class="subpage messages-page"><header class="subpage-header"><span></span><h1>留言板</h1>${headerAction}</header><section class="messages-content${editing}" aria-label="留言板">${content}</section>${bottomBar()}</main>`
 }
 
+function userCreateView() {
+  return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close-user-create" aria-label="返回个人中心">${icons.back}</button><h1>创建用户</h1><span></span></header>
+    <section class="profile-page" aria-label="创建用户">
+      <form id="create-user-form" class="login-form" novalidate>
+        <label class="login-field">
+          <span>账号</span>
+          <input id="create-user-username" name="username" type="text" autocomplete="username" placeholder="请输入账号" required>
+        </label>
+        <label class="login-field">
+          <span>显示名称</span>
+          <input id="create-user-display-name" name="displayName" type="text" autocomplete="off" placeholder="例如：张三 / 员工 A" required>
+        </label>
+        <label class="login-field">
+          <span>密码</span>
+          <input id="create-user-password" name="password" type="password" autocomplete="new-password" placeholder="请输入密码" required>
+        </label>
+        ${state.createUserError ? `<p class="login-error" role="alert">${escapeHtml(state.createUserError)}</p>` : ''}
+        <button type="submit" class="primary-button login-submit">创建账号</button>
+        <p class="login-hint">新账号默认无菜单权限，需要管理员再分配后才能看到对应菜品。</p>
+      </form>
+    </section>${bottomBar()}</main>`
+}
+
 function profileView() {
   const favoriteCount = dishes.filter((dish) => dish.favorite).length
+  const displayName = state.currentUser?.displayName || '管理员'
+  const adminAction = state.currentUser?.role === 'admin'
+    ? `<button class="profile-action" data-action="create-user">${icons.user}<span>创建用户</span></button>`
+    : ''
   return `<main class="subpage"><header class="subpage-header"><span></span><h1>我的</h1><span></span></header>
     <section class="profile-page" aria-label="个人中心">
-      <div class="profile-card"><div class="profile-avatar">${icons.user}</div><div><b>乐梵小灶</b><span>和家人一起点今天想吃的菜</span></div></div>
+      <div class="profile-card"><div class="profile-avatar">${icons.user}</div><div><b>${escapeHtml(displayName)}</b><span>和家人一起点今天想吃的菜</span></div></div>
       <div class="profile-stats">
         <div><b>${dishes.length}</b><span>菜单菜品</span></div>
         <div><b>${favoriteCount}</b><span>收藏菜品</span></div>
         <div><b>${pickCount()}</b><span>已点菜品</span></div>
       </div>
       <div class="profile-actions">
+        ${adminAction}
         <button class="profile-action" data-action="favorites">${icons.heart}<span>我的收藏</span></button>
         <button class="profile-action" data-action="history">${icons.list}<span>点餐记录</span></button>
         <button class="profile-action" data-action="message-history">${icons.message}<span>留言历史</span></button>
+        <button class="profile-action profile-action--danger" data-action="logout">${icons.close}<span>退出登录</span></button>
       </div>
     </section>${bottomBar()}</main>`
 }
@@ -1169,10 +1203,62 @@ function closeSuccessModal() {
   render()
 }
 
+function requireAuth() {
+  return Boolean(state.currentUser)
+}
+
+function loginView() {
+  return `
+    <main class="login-screen">
+      <section class="login-panel" aria-label="登录">
+        <div class="login-branding">
+          <div class="login-logo">${icons.user}</div>
+          <h1>乐梵小灶</h1>
+          <p>暂未开放注册，请联系管理员开通账号</p>
+        </div>
+        <form id="login-form" class="login-form" novalidate>
+          <label class="login-field">
+            <span>账号</span>
+            <input id="login-username" name="username" type="text" autocomplete="username" placeholder="请输入账号" required>
+          </label>
+          <label class="login-field">
+            <span>密码</span>
+            <input id="login-password" name="password" type="password" autocomplete="current-password" placeholder="请输入密码" required>
+          </label>
+          ${state.authError ? `<p class="login-error" role="alert">${escapeHtml(state.authError)}</p>` : ''}
+          <button type="submit" class="primary-button login-submit">登录</button>
+          <p class="login-hint">没有账号？请联系管理员申请。</p>
+        </form>
+      </section>
+    </main>
+  `
+}
+
 function render() {
   const categoryScrollLeft = document.querySelector('.categories')?.scrollLeft
   const messagesScrollTop = state.view === 'messages' ? window.scrollY : 0
-  const views = { menu: menuView, detail: detailView, picks: pickedView, orders: ordersView, dishForm: dishFormView, favorites: favoritesView, profile: profileView, messages: messagesView, history: historyView, messageHistory: messageHistoryView }
+  const views = {
+    login: loginView,
+    menu: menuView,
+    detail: detailView,
+    picks: pickedView,
+    orders: ordersView,
+    dishForm: dishFormView,
+    favorites: favoritesView,
+    profile: profileView,
+    userCreate: userCreateView,
+    messages: messagesView,
+    history: historyView,
+    messageHistory: messageHistoryView,
+  }
+  if (!requireAuth() && state.view !== 'login') {
+    state.view = 'login'
+  }
+  if (!requireAuth()) {
+    document.querySelector('#app').innerHTML = loginView()
+    document.body.classList.remove('image-preview-open', 'modal-open')
+    return
+  }
   document.querySelector('#app').innerHTML = `${views[state.view]()}${imagePreview()}${successModal()}`
   document.body.classList.toggle('image-preview-open', state.imagePreviewOpen)
   document.body.classList.toggle('modal-open', state.showSuccessModal)
@@ -1225,11 +1311,69 @@ async function syncOrder() {
   state.orderNumber = result?.orderNumber || ''
 }
 
+document.addEventListener('submit', async (event) => {
+  if (event.target.id === 'login-form') {
+    event.preventDefault()
+    const form = event.target
+    const username = form.querySelector('#login-username')?.value || ''
+    const password = form.querySelector('#login-password')?.value || ''
+    try {
+      const user = await loginUser(username, password)
+      state.currentUser = user
+      state.authError = ''
+      state.view = 'menu'
+      render()
+      showToast(`欢迎回来，${user.displayName}`)
+    } catch (error) {
+      state.authError = error.message || ADMIN_CONTACT_MESSAGE
+      render()
+    }
+    return
+  }
+
+  if (event.target.id === 'create-user-form') {
+    event.preventDefault()
+    const form = event.target
+    const username = form.querySelector('#create-user-username')?.value?.trim() || ''
+    const password = form.querySelector('#create-user-password')?.value?.trim() || ''
+    const displayName = form.querySelector('#create-user-display-name')?.value?.trim() || username
+    if (!username || !password) {
+      state.createUserError = '账号和密码不能为空。'
+      render()
+      return
+    }
+    try {
+      const created = await apiRequest('/api/users', {
+        method: 'POST',
+        body: JSON.stringify({ username, password, displayName }),
+      })
+      state.createUserError = ''
+      showToast(`已创建账号：${created.displayName || created.username}`)
+      navigate('profile', { replace: true })
+    } catch (error) {
+      state.createUserError = error.message || '创建用户失败'
+      render()
+    }
+  }
+})
+
 document.addEventListener('click', async (event) => {
   if (cartSwipeGesture.suppressClick) { cartSwipeGesture.suppressClick = false; return }
   const button = event.target.closest('button'); if (!button) return
   if (button.dataset.category) { state.category = button.dataset.category; render(); return }
   const action = button.dataset.action
+  if (action === 'create-user') {
+    state.createUserError = ''
+    navigate('userCreate')
+    return
+  }
+  if (action === 'close-user-create') {
+    state.createUserError = ''
+    if (state.view === 'userCreate') {
+      navigate('profile', { replace: true })
+      return
+    }
+  }
   if (action === 'toggle-category-dropdown') {
     const open = button.getAttribute('aria-expanded') !== 'true'
     setCategoryDropdownOpen(open)
@@ -1510,6 +1654,14 @@ document.addEventListener('click', async (event) => {
     navigate('messages')
   }
   if (action === 'profile') { navigate('profile') }
+  if (action === 'logout') {
+    logoutUser()
+    state.currentUser = null
+    state.authError = ''
+    state.view = 'login'
+    render()
+    return
+  }
   if (action === 'clear' && window.confirm('确定清空全部已点菜品吗？')) {
     button.disabled = true
     try {
