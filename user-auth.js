@@ -60,14 +60,9 @@ export function resolveAccessibleDishIds(user, allDishIds, userMenuAssignments =
   const normalizedAssignments = Array.isArray(userMenuAssignments) ? userMenuAssignments : []
   const targetUserId = Number(user.id ?? user.userId ?? 0)
 
-  let assignment = null
-  if (targetUserId > 0) {
-    assignment = normalizedAssignments.find((entry) => Number(entry.userId) === targetUserId) || null
-  }
-  if (!assignment && normalizedAssignments.length === 1) {
-    assignment = normalizedAssignments[0]
-  }
+  if (!targetUserId) return []
 
+  const assignment = normalizedAssignments.find((entry) => Number(entry.userId) === targetUserId) || null
   const allowedDishIds = new Set((assignment?.dishIds ?? []).map((dishId) => Number(dishId)))
   return allDishIds.filter((dishId) => allowedDishIds.has(Number(dishId)))
 }

@@ -629,17 +629,83 @@ function ordersView() {
 }
 
 function orderHistoryCard(order) {
-  const items = order.items.map((item) => `<li><b>${escapeHtml(item.name)}</b><span>${escapeHtml(item.option)}${item.note ? ` · ${escapeHtml(item.note)}` : ''}</span></li>`).join('')
+  const items = Array.isArray(order?.items) && order.items.length
+    ? order.items.map((item) => `<li><b>${escapeHtml(item.name || '未知菜品')}</b><span>${escapeHtml(item.option || '标准份')}${item.note ? ` · ${escapeHtml(item.note)}` : ''}</span></li>`).join('')
+    : '<li class="order-history-empty">无菜品记录</li>'
   const message = order.message ? splitMessageContent(order.message) : ''
   const messageBlock = message
     ? `<div class="order-history-message">${icons.message}<p>${escapeHtml(message)}</p></div>`
     : ''
   return `<article class="order-history-card">
     <div class="order-history-head"><time>${formatMessageTime(order.createdAt)}</time></div>
-    <ul class="order-history-items">${items || '<li class="order-history-empty">无菜品记录</li>'}</ul>
+    <ul class="order-history-items">${items}</ul>
     ${messageBlock}
     <button class="secondary-button repeat-order-btn" data-action="repeat-order" data-order-id="${order.id}">再来一单</button>
   </article>`
+}
+
+function messageHistoryCard(message) {
+  const order = message.order
+  const when = order?.createdAt || message.createdAt
+  const updated = message.updatedAt && message.updatedAt !== message.createdAt
+    ? ` · 更新 ${timeOnly(message.updatedAt)}`
+    : ''
+  const dishes = order?.dishes ? `<small class="history-dishes">${escapeHtml(order.dishes)}</small>` : ''
+  const orderLabel = order
+    ? `<span class="history-order-label">本单 · ${timeOnly(order.createdAt)}</span>`
+    : ''
+  const content = splitMessageContent(message.content || '')
+  return `<article class="order-history-card order-history-card--message">
+    <div class="order-history-head"><time>${dayLabel(when)}${updated}</time></div>
+    <div class="history-message-body">${orderLabel}${dishes}<p>${escapeHtml(content || '无留言内容')}</p></div>
+  </article>`
+}
+
+function mergedHistoryGroups() {
+  const orderEntries = state.orderHistory.map((order) => ({
+    kind: 'order',
+    day: dayKey(order.createdAt),
+    createdAt: order.createdAt,
+    entry: order,
+  }))
+
+  const existingOrderIds = new Set(state.orderHistory.map((order) => Number(order.id)))
+  const messageEntries = messages
+    .filter((message) => {
+      if (!splitMessageContent(message.content || '')) return false
+      if (message.orderId && existingOrderIds.has(Number(message.orderId))) return false
+      return true
+    })
+    .map((message) => ({
+      kind: 'message',
+      day: dayKey(message.order?.createdAt || message.createdAt),
+      createdAt: message.order?.createdAt || message.createdAt,
+      entry: message,
+    }))
+
+  const merged = [...orderEntries, ...messageEntries]
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+
+  const groups = new Map()
+  for (const item of merged) {
+    if (!groups.has(item.day)) groups.set(item.day, [])
+    groups.get(item.day).push(item)
+  }
+  return [...groups.entries()]
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([day, entries]) => ({ day, entries }))
+}
+
+function historyView() {
+  const groups = mergedHistoryGroups()
+  const content = state.orderHistoryStatus === 'loading'
+    ? '<div class="empty" role="status"><b>正在加载记录</b><span>正在读取过去的点餐记录</span></div>'
+    : state.orderHistoryStatus === 'error'
+      ? '<div class="empty" role="alert"><b>记录加载失败</b><span>无法连接服务器，请检查网络后重试</span><button class="secondary-button" data-action="retry-history">重新加载</button></div>'
+      : groups.length
+        ? groups.map((group) => `<section class="order-day-group" aria-label="${dayLabel(group.day)}的记录"><h2>${dayLabel(group.day)}</h2>${group.entries.map((entry) => entry.kind === 'order' ? orderHistoryCard(entry.entry) : messageHistoryCard(entry.entry)).join('')}</section>`).join('')
+        : `<div class="empty full-empty"><span class="empty-icon">${icons.receipt}</span><b>还没有点餐记录</b><span>点单结束后，这里会按日期保存每一单和留言</span><button class="secondary-button" data-action="menu">去点菜</button></div>`
+  return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回">${icons.back}</button><h1>点餐记录</h1><span></span></header><section class="history-page">${content}</section>${bottomBar()}</main>`
 }
 
 function groupOrderHistory() {
@@ -654,17 +720,6 @@ function groupOrderHistory() {
     group.orders.push(order)
   }
   return groups.map((group) => `<section class="order-day-group" aria-label="${dayLabel(group.orders[0].createdAt)}的点餐记录"><h2>${dayLabel(group.orders[0].createdAt)}</h2>${group.orders.map(orderHistoryCard).join('')}</section>`).join('')
-}
-
-function historyView() {
-  const content = state.orderHistoryStatus === 'loading'
-    ? '<div class="empty" role="status"><b>正在加载记录</b><span>正在读取过去的点餐记录</span></div>'
-    : state.orderHistoryStatus === 'error'
-      ? '<div class="empty" role="alert"><b>记录加载失败</b><span>无法连接服务器，请检查网络后重试</span><button class="secondary-button" data-action="retry-history">重新加载</button></div>'
-      : state.orderHistory.length
-        ? groupOrderHistory()
-        : `<div class="empty full-empty"><span class="empty-icon">${icons.receipt}</span><b>还没有点餐记录</b><span>点单结束后，这里会按日期保存每一单</span><button class="secondary-button" data-action="menu">去点菜</button></div>`
-  return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回">${icons.back}</button><h1>点餐记录</h1><span></span></header><section class="history-page">${content}</section>${bottomBar()}</main>`
 }
 
 function favoritesView() {
@@ -967,24 +1022,13 @@ function noteCard() {
 }
 
 function historyItem(message) {
-  const order = message.order
-  const when = order?.createdAt || message.createdAt
-  const updated = message.updatedAt && message.updatedAt !== message.createdAt
-    ? ` · 更新 ${timeOnly(message.updatedAt)}`
-    : ''
-  const dishes = order?.dishes
-    ? `<small class="history-dishes">${escapeHtml(order.dishes)}</small>`
-    : ''
-  const orderLabel = order
-    ? `<span class="history-order-label">本单 · ${timeOnly(order.createdAt)}</span>`
-    : ''
-  return `<li class="history-item order-message-item"><time datetime="${escapeAttr(when)}">${dayLabel(when)}${updated}</time><div class="history-message-body">${orderLabel}${dishes}<p>${escapeHtml(splitMessageContent(message.content))}</p></div></li>`
+  return messageHistoryCard(message)
 }
 
 function messageHistoryView() {
-  const groups = historyGroups()
+  const groups = mergedHistoryGroups()
   const content = groups.length
-    ? groups.map((group) => `<section class="order-day-group" aria-label="${dayLabel(group.day)}的留言"><h2>${dayLabel(group.day)}</h2><ul class="history-list">${group.messages.map(historyItem).join('')}</ul></section>`).join('')
+    ? groups.map((group) => `<section class="order-day-group" aria-label="${dayLabel(group.day)}的记录"><h2>${dayLabel(group.day)}</h2>${group.entries.map((entry) => entry.kind === 'order' ? orderHistoryCard(entry.entry) : messageHistoryCard(entry.entry)).join('')}</section>`).join('')
     : `<div class="empty full-empty"><span class="empty-icon">${icons.message}</span><b>还没有留言历史</b><span>每单的留言会随订单保存在这里</span><button class="secondary-button" data-action="messages">去留言</button></div>`
   return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close" aria-label="返回">${icons.back}</button><h1>留言历史</h1><span></span></header><section class="history-page">${content}</section>${bottomBar()}</main>`
 }
@@ -1042,8 +1086,7 @@ function profileView() {
       <div class="profile-actions">
         ${adminAction}
         <button class="profile-action" data-action="favorites">${icons.heart}<span>我的收藏</span></button>
-        <button class="profile-action" data-action="history">${icons.list}<span>点餐记录</span></button>
-        <button class="profile-action" data-action="message-history">${icons.message}<span>留言历史</span></button>
+        <button class="profile-action" data-action="history">${icons.list}<span>记录</span></button>
         <button class="profile-action profile-action--danger" data-action="logout">${icons.close}<span>退出登录</span></button>
       </div>
     </section>${bottomBar()}</main>`
@@ -1229,6 +1272,7 @@ function dishFormView() {
       </div>
       <label class="sr-only" for="dish-form-name">菜品名称</label><input id="dish-form-name" name="name" maxlength="20" required placeholder="菜品名称（必填）" value="${escapeAttr(name)}" autofocus>
       <label class="sr-only" for="dish-form-desc">菜品描述</label><textarea id="dish-form-desc" name="desc" maxlength="60" placeholder="菜品描述：介绍食材、口味或特色（选填）">${escapeHtml(desc)}</textarea>
+      <p class="login-hint" style="margin: 0 0 12px;">新建菜品默认仅对当前账号可见，之后可在“分配菜单”中继续授权给其他人。</p>
       <section class="category-section" aria-labelledby="category-heading">
         <div class="form-section-copy"><h2 id="category-heading">菜品分类</h2><p>选择分类后，菜品会自动归入首页对应栏目</p></div>
         <div class="category-select-wrap">
@@ -1628,7 +1672,10 @@ document.addEventListener('click', async (event) => {
   if (action === 'retry-messages') { await loadMessages(); return }
   if (action === 'retry-history') { await loadOrderHistory(); return }
   if (action === 'history') {
-    await loadOrderHistory()
+    await Promise.all([
+      loadOrderHistory(),
+      loadMessages({ silent: true }),
+    ])
     navigate('history')
     return
   }
@@ -1697,8 +1744,11 @@ document.addEventListener('click', async (event) => {
     return
   }
   if (action === 'message-history') {
-    navigate('messageHistory')
-    if (messagesStatus !== 'ready') loadMessages({ silent: true })
+    await Promise.all([
+      loadOrderHistory(),
+      loadMessages({ silent: true }),
+    ])
+    navigate('history')
     return
   }
   if (action === 'edit-dish') { state.moreMenuOpen = false; state.editingDish = state.selectedDish; navigate('dishForm'); return }

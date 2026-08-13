@@ -8,7 +8,7 @@ test('admin can access all dishes', () => {
 })
 
 test('staff sees only assigned dishes', () => {
-  const user = { username: 'alice', role: 'staff' }
+  const user = { id: 7, username: 'alice', role: 'staff' }
   const assigned = [{ userId: 7, dishIds: [2, 3] }]
   assert.deepEqual(resolveAccessibleDishIds(user, [1, 2, 3], assigned), [2, 3])
 })
@@ -16,4 +16,10 @@ test('staff sees only assigned dishes', () => {
 test('new user without assigned dishes sees empty menu', () => {
   const user = { username: 'bob', role: 'staff' }
   assert.deepEqual(resolveAccessibleDishIds(user, [1, 2, 3], []), [])
+})
+
+test('single assignment record must not be treated as permission for every staff user', () => {
+  const user = { id: 9, username: 'charlie', role: 'staff' }
+  const assignments = [{ userId: 7, dishIds: [2, 3] }]
+  assert.deepEqual(resolveAccessibleDishIds(user, [1, 2, 3], assignments), [])
 })

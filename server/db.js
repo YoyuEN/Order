@@ -521,7 +521,7 @@ export async function getDish(id, connection = pool) {
   }
 }
 
-export async function createDish(dish) {
+export async function createDish(dish, userId = null) {
   const connection = await pool.getConnection()
   try {
     await connection.beginTransaction()
@@ -547,6 +547,13 @@ export async function createDish(dish) {
       await connection.execute(
         'INSERT INTO dish_steps (dish_id, instruction, image_url, sort_order) VALUES (?, ?, ?, ?)',
         [result.insertId, normalizedStep.instruction, normalizedStep.image || null, index],
+      )
+    }
+    const ownerUserId = Number(userId)
+    if (Number.isFinite(ownerUserId) && ownerUserId > 0) {
+      await connection.execute(
+        'INSERT INTO user_menu_dishes (user_id, dish_id) VALUES (?, ?)',
+        [ownerUserId, result.insertId],
       )
     }
     await connection.commit()

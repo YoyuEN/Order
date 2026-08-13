@@ -321,7 +321,8 @@ app.get('/api/dishes/:id', async (request, response, next) => {
 
 app.post('/api/dishes', async (request, response, next) => {
   try {
-    response.status(201).json(await createDish(dishSchema.parse(request.body)))
+    const currentUserId = Number(request.get('X-User-Id') || 0)
+    response.status(201).json(await createDish(dishSchema.parse(request.body), currentUserId || null))
   } catch (error) {
     next(error)
   }
