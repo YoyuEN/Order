@@ -28,20 +28,18 @@ export async function initializeDatabase() {
   const connection = await pool.getConnection()
   try {
     await connection.query(`CREATE TABLE IF NOT EXISTS dishes (
-      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-      category VARCHAR(50) NOT NULL,
-      name VARCHAR(100) NOT NULL,
-      description VARCHAR(500) NOT NULL DEFAULT '',
-      sales INT UNSIGNED NOT NULL DEFAULT 0,
-      spicy TINYINT UNSIGNED NOT NULL DEFAULT 0,
-      badge VARCHAR(50) NULL,
-      image_url VARCHAR(1000) NULL,
-      sold_out BOOLEAN NOT NULL DEFAULT FALSE,
-      is_custom BOOLEAN NOT NULL DEFAULT FALSE,
-      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      PRIMARY KEY (id), INDEX idx_dishes_category (category), INDEX idx_dishes_name (name)
-    ) ENGINE=InnoDB`)
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+          category VARCHAR(50) NOT NULL,
+          name VARCHAR(100) NOT NULL,
+          description VARCHAR(500) NOT NULL DEFAULT '',
+          spicy TINYINT UNSIGNED NOT NULL DEFAULT 0,
+          badge VARCHAR(50) NULL,
+          image_url VARCHAR(1000) NULL,
+          sold_out BOOLEAN NOT NULL DEFAULT FALSE,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (id)
+        ) ENGINE=InnoDB`)
     await connection.query(`CREATE TABLE IF NOT EXISTS dish_options (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
       dish_id BIGINT UNSIGNED NOT NULL,
@@ -73,50 +71,37 @@ export async function initializeDatabase() {
       await connection.query('ALTER TABLE dish_steps ADD COLUMN image_url VARCHAR(1000) NULL AFTER instruction')
     }
     await connection.query(`CREATE TABLE IF NOT EXISTS orders (
-      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-      order_number VARCHAR(32) NOT NULL,
-      table_number VARCHAR(20) NOT NULL,
-      meal_period VARCHAR(20) NOT NULL DEFAULT '午餐',
-      guest_count TINYINT UNSIGNED NOT NULL,
-      status ENUM('draft', 'confirmed', 'completed', 'cancelled') NOT NULL DEFAULT 'draft',
-      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      PRIMARY KEY (id), UNIQUE KEY uk_orders_order_number (order_number),
-      INDEX idx_orders_created_at (created_at), INDEX idx_orders_status (status),
-      INDEX idx_orders_status_period (status, meal_period)
-    ) ENGINE=InnoDB`)
-    const [orderPeriodColumns] = await connection.query("SHOW COLUMNS FROM orders LIKE 'meal_period'")
-    if (!orderPeriodColumns.length) {
-      await connection.query("ALTER TABLE orders ADD COLUMN meal_period VARCHAR(20) NOT NULL DEFAULT '午餐' AFTER table_number")
-    }
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+          order_number VARCHAR(32) NOT NULL,
+          status ENUM('draft', 'confirmed', 'completed', 'cancelled') NOT NULL DEFAULT 'draft',
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (id), UNIQUE KEY uk_orders_order_number (order_number),
+          INDEX idx_orders_created_at (created_at), INDEX idx_orders_status (status)
+        ) ENGINE=InnoDB`)
     await connection.query(`CREATE TABLE IF NOT EXISTS order_items (
-      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-      order_id BIGINT UNSIGNED NOT NULL,
-      dish_id BIGINT UNSIGNED NULL,
-      dish_name VARCHAR(100) NOT NULL,
-      option_name VARCHAR(100) NOT NULL DEFAULT '标准份',
-      note VARCHAR(255) NOT NULL DEFAULT '',
-      quantity INT UNSIGNED NOT NULL DEFAULT 1,
-      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      PRIMARY KEY (id), INDEX idx_order_items_order_id (order_id),
-      CONSTRAINT fk_order_items_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
-      CONSTRAINT fk_order_items_dish FOREIGN KEY (dish_id) REFERENCES dishes(id) ON DELETE SET NULL
-    ) ENGINE=InnoDB`)
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+          order_id BIGINT UNSIGNED NOT NULL,
+          dish_id BIGINT UNSIGNED NULL,
+          dish_name VARCHAR(100) NOT NULL,
+          option_name VARCHAR(100) NOT NULL DEFAULT '标准份',
+          note VARCHAR(255) NOT NULL DEFAULT '',
+          PRIMARY KEY (id), INDEX idx_order_items_order_id (order_id),
+          CONSTRAINT fk_order_items_order FOREIGN KEY (order_id) REFERENCES orders(id) ON DELETE CASCADE,
+          CONSTRAINT fk_order_items_dish FOREIGN KEY (dish_id) REFERENCES dishes(id) ON DELETE SET NULL
+        ) ENGINE=InnoDB`)
     await connection.query(`CREATE TABLE IF NOT EXISTS favorites (
       dish_id BIGINT UNSIGNED NOT NULL,
-      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      PRIMARY KEY (dish_id),
-      CONSTRAINT fk_favorites_dish FOREIGN KEY (dish_id) REFERENCES dishes(id) ON DELETE CASCADE
-    ) ENGINE=InnoDB`)
+          PRIMARY KEY (dish_id),
+          CONSTRAINT fk_favorites_dish FOREIGN KEY (dish_id) REFERENCES dishes(id) ON DELETE CASCADE
+        ) ENGINE=InnoDB`)
     await connection.query(`CREATE TABLE IF NOT EXISTS messages (
-      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-      content VARCHAR(500) NOT NULL,
-      meal_period VARCHAR(20) NULL,
-      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-      PRIMARY KEY (id), INDEX idx_messages_created_at (created_at),
-      INDEX idx_messages_period (meal_period)
-    ) ENGINE=InnoDB`)
+          id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+          content VARCHAR(500) NOT NULL,
+          created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          PRIMARY KEY (id), INDEX idx_messages_created_at (created_at)
+        ) ENGINE=InnoDB`)
     const [messageOrderColumns] = await connection.query("SHOW COLUMNS FROM messages LIKE 'order_id'")
     if (!messageOrderColumns.length) {
       await connection.query('ALTER TABLE messages ADD COLUMN order_id BIGINT UNSIGNED NULL AFTER content')
@@ -185,9 +170,9 @@ async function seedMissingDefaultDishes(connection) {
       if (existingDish) continue
 
       const [result] = await connection.execute(
-        `INSERT INTO dishes (category, name, description, sales, spicy, badge, image_url, sold_out, is_custom)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, FALSE)`,
-        [dish.category, dish.name, dish.desc, dish.sales, dish.spicy || 0, dish.badge || null, dish.image, Boolean(dish.soldOut)],
+        `INSERT INTO dishes (category, name, description, spicy, badge, image_url, sold_out)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [dish.category, dish.name, dish.desc, dish.spicy || 0, dish.badge || null, dish.image, Boolean(dish.soldOut)],
       )
       for (const [index, option] of dish.options.entries()) {
         await connection.execute(
@@ -205,7 +190,7 @@ async function seedMissingDefaultDishes(connection) {
 
 export async function listDishes() {
   const [dishRows] = await pool.query(
-    `SELECT id, category, name, description, sales, spicy, badge, image_url, sold_out, is_custom,
+      `SELECT id, category, name, description, spicy, badge, image_url, sold_out,
            EXISTS(SELECT 1 FROM favorites f WHERE f.dish_id = dishes.id) AS favorite
      FROM dishes ORDER BY id`,
   )
@@ -238,9 +223,9 @@ export async function listDishes() {
   }
   return dishRows.map((row) => ({
     id: Number(row.id), category: row.category, name: row.name, desc: row.description,
-    sales: row.sales, spicy: row.spicy, badge: row.badge || undefined,
+      sales: 0, spicy: row.spicy, badge: row.badge || undefined,
     image: row.image_url || '/icons/icon.svg', soldOut: Boolean(row.sold_out),
-    custom: Boolean(row.is_custom), favorite: Boolean(row.favorite), options: optionsByDish.get(String(row.id)) || ['标准份'],
+      custom: false, favorite: Boolean(row.favorite), options: optionsByDish.get(String(row.id)) || ['标准份'],
     ingredients: ingredientsByDish.get(String(row.id)) || [],
     steps: stepsByDish.get(String(row.id)) || [],
   }))
@@ -248,7 +233,7 @@ export async function listDishes() {
 
 export async function getDish(id, connection = pool) {
   const [[row]] = await connection.execute(
-    `SELECT id, category, name, description, sales, spicy, badge, image_url, sold_out, is_custom,
+      `SELECT id, category, name, description, spicy, badge, image_url, sold_out,
            EXISTS(SELECT 1 FROM favorites f WHERE f.dish_id = dishes.id) AS favorite
      FROM dishes WHERE id = ?`,
     [id],
@@ -268,9 +253,9 @@ export async function getDish(id, connection = pool) {
   )
   return {
     id: Number(row.id), category: row.category, name: row.name, desc: row.description,
-    sales: row.sales, spicy: row.spicy, badge: row.badge || undefined,
+      sales: 0, spicy: row.spicy, badge: row.badge || undefined,
     image: row.image_url || '/icons/icon.svg', soldOut: Boolean(row.sold_out),
-    custom: Boolean(row.is_custom), favorite: Boolean(row.favorite), options: optionRows.map((option) => option.option_name),
+      custom: false, favorite: Boolean(row.favorite), options: optionRows.map((option) => option.option_name),
     ingredients: ingredientRows.map((ingredient) => ({
       name: ingredient.ingredient_name,
       amount: ingredient.amount,
@@ -284,8 +269,8 @@ export async function createDish(dish) {
   try {
     await connection.beginTransaction()
     const [result] = await connection.execute(
-      `INSERT INTO dishes (category, name, description, spicy, image_url, is_custom)
-       VALUES (?, ?, ?, ?, ?, TRUE)`,
+      `INSERT INTO dishes (category, name, description, spicy, image_url)
+       VALUES (?, ?, ?, ?, ?)`,
       [dish.category, dish.name, dish.desc, dish.spicy, dish.image],
     )
     for (const [index, option] of (dish.options || ['标准份']).entries()) {
@@ -545,8 +530,7 @@ export async function createOrder(order) {
     }
 
     const [result] = await connection.execute(
-      `INSERT INTO orders (order_number, table_number, meal_period, guest_count, status)
-       VALUES (?, '', '午餐', 1, 'confirmed')`,
+      `INSERT INTO orders (order_number, status) VALUES (?, 'confirmed')`,
       [orderNumber],
     )
     for (const item of order.items) {
@@ -583,7 +567,7 @@ export async function completeOrder(id) {
 
 export async function getLatestOrder() {
   const [[order]] = await pool.query(
-    `SELECT id, order_number, meal_period, created_at
+      `SELECT id, order_number, created_at
      FROM orders WHERE status = 'confirmed' ORDER BY id DESC LIMIT 1`,
   )
   if (!order) return null
@@ -594,22 +578,21 @@ export async function getLatestOrder() {
     [order.id],
   )
   return {
-    id: Number(order.id),
-    orderNumber: order.order_number,
-    mealPeriod: order.meal_period,
-    createdAt: order.created_at,
-    items: itemRows.map((item) => ({
-      dishId: Number(item.dish_id),
-      name: item.dish_name,
-      option: item.option_name,
-      note: item.note,
-    })),
+  id: Number(order.id),
+  orderNumber: order.order_number,
+  createdAt: order.created_at,
+  items: itemRows.map((item) => ({
+    dishId: Number(item.dish_id),
+    name: item.dish_name,
+    option: item.option_name,
+    note: item.note,
+  })),
   }
 }
 
 export async function listOrders({ days = 30 } = {}) {
   const [orderRows] = await pool.query(
-    `SELECT id, order_number, meal_period, status, created_at
+      `SELECT id, order_number, status, created_at
      FROM orders
      WHERE status = 'completed' AND created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
      ORDER BY created_at DESC, id DESC`,
@@ -644,12 +627,11 @@ export async function listOrders({ days = 30 } = {}) {
     if (!messageByOrder.has(row.order_id)) messageByOrder.set(row.order_id, row.content)
   }
   return orderRows.map((row) => ({
-    id: Number(row.id),
-    orderNumber: row.order_number,
-    mealPeriod: row.meal_period,
-    status: row.status,
-    createdAt: row.created_at,
-    items: itemsByOrder.get(row.id) || [],
-    message: messageByOrder.get(row.id) ?? null,
+  id: Number(row.id),
+  orderNumber: row.order_number,
+  status: row.status,
+  createdAt: row.created_at,
+  items: itemsByOrder.get(row.id) || [],
+  message: messageByOrder.get(row.id) ?? null,
   }))
 }
