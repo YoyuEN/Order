@@ -535,7 +535,7 @@ export async function createOrder(order) {
     )
     for (const item of order.items) {
       await connection.execute(
-        'INSERT INTO order_items (order_id, dish_id, dish_name, option_name, note, quantity) VALUES (?, ?, ?, ?, ?, 1)',
+        'INSERT INTO order_items (order_id, dish_id, dish_name, option_name, note) VALUES (?, ?, ?, ?, ?)',
         [result.insertId, item.dishId, item.name, item.option, item.note],
       )
     }

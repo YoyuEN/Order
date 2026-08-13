@@ -22,11 +22,6 @@ SELECT COUNT(*) INTO @cnt FROM information_schema.COLUMNS
 SET @stmt = IF(@cnt > 0, 'ALTER TABLE `orders` DROP COLUMN `meal_period`', 'SELECT 0');
 PREPARE stmt FROM @stmt; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
--- order_items.quantity
-SELECT COUNT(*) INTO @cnt FROM information_schema.COLUMNS
- WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'order_items' AND COLUMN_NAME = 'quantity';
-SET @stmt = IF(@cnt > 0, 'ALTER TABLE `order_items` DROP COLUMN `quantity`', 'SELECT 0');
-PREPARE stmt FROM @stmt; EXECUTE stmt; DEALLOCATE PREPARE stmt;
 
 -- order_items.created_at
 SELECT COUNT(*) INTO @cnt FROM information_schema.COLUMNS

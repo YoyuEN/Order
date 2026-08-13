@@ -115,7 +115,6 @@ drop_column_if_exists "orders" "table_number"
 drop_column_if_exists "orders" "guest_count"
 drop_column_if_exists "orders" "meal_period"
 # order_items
-drop_column_if_exists "order_items" "quantity"
 drop_column_if_exists "order_items" "created_at"
 # favorites
 drop_column_if_exists "favorites" "created_at"
