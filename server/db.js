@@ -2,6 +2,8 @@ import crypto from 'node:crypto'
 import mysql from 'mysql2/promise'
 import dotenv from 'dotenv'
 import { defaultDishes } from '../menu-data.js'
+import path from 'node:path'
+import { unlink } from 'node:fs/promises'
 
 dotenv.config({ path: '.env.local' })
 
@@ -328,12 +330,13 @@ export async function updateDish(id, dish) {
   const connection = await pool.getConnection()
   try {
     await connection.beginTransaction()
-    // 先确认菜品存在，避免“编辑内容未变化时 affectedRows 为 0”被误判为不存在（404）
-    const [[existing]] = await connection.execute('SELECT id FROM dishes WHERE id = ?', [id])
+    // 先确认菜品存在并读取旧封面（用于可能的文件垃圾回收）
+    const [[existing]] = await connection.execute('SELECT id, image_url FROM dishes WHERE id = ?', [id])
     if (!existing) {
       await connection.rollback()
       return null
     }
+    const oldImage = existing.image_url || null
     await connection.execute(
       `UPDATE dishes
        SET category = ?, name = ?, description = ?, spicy = ?, image_url = ?
@@ -363,6 +366,17 @@ export async function updateDish(id, dish) {
       )
     }
     const updatedDish = await getDish(id, connection)
+
+    // 如果封面已更换且指向本地 uploads，尝试删除旧文件（失败不阻塞）
+    try {
+      if (oldImage && oldImage !== dish.image && oldImage.startsWith('/uploads/')) {
+        const abs = path.join(process.cwd(), oldImage.slice(1))
+        await unlink(abs)
+      }
+    } catch (e) {
+      console.error('删除旧菜品图片失败：', e?.message || e)
+    }
+
     await connection.commit()
     return updatedDish
   } catch (error) {
@@ -374,7 +388,16 @@ export async function updateDish(id, dish) {
 }
 
 export async function deleteDish(id) {
+  const [[row]] = await pool.execute('SELECT image_url FROM dishes WHERE id = ? LIMIT 1', [id])
+  const imageUrl = row ? row.image_url : null
   const [result] = await pool.execute('DELETE FROM dishes WHERE id = ?', [id])
+  if (result.affectedRows > 0 && imageUrl && imageUrl.startsWith('/uploads/')) {
+    try {
+      await unlink(path.join(process.cwd(), imageUrl.slice(1)))
+    } catch (e) {
+      console.error('删除菜品图片失败：', e?.message || e)
+    }
+  }
   return result.affectedRows > 0
 }
 
@@ -498,6 +521,29 @@ export async function createOrder(order) {
     await connection.execute("DELETE FROM orders WHERE status != 'completed'")
     // 订单号改为服务端生成，杜绝多设备同时用客户端时间戳撞号导致的串单
     const orderNumber = `ORD${Date.now()}${crypto.randomUUID().slice(0, 6).toUpperCase()}`
+
+    // 先批量校验菜品是否存在，若不存在返回 400（避免插入 NULL 并产生“幽灵菜品”）
+    const ids = order.items.map((i) => i.dishId)
+    if (ids.length === 0) {
+      await connection.rollback()
+      const err = new Error('订单必须包含至少一道菜')
+      err.status = 400
+      throw err
+    }
+    const placeholders = ids.map(() => '?').join(',')
+    const [rows] = await connection.execute(
+      `SELECT id FROM dishes WHERE id IN (${placeholders})`,
+      ids,
+    )
+    const existing = new Set(rows.map((r) => Number(r.id)))
+    const missing = order.items.find((i) => !existing.has(i.dishId))
+    if (missing) {
+      await connection.rollback()
+      const err = new Error(`菜品不存在: ${missing.dishId}`)
+      err.status = 400
+      throw err
+    }
+
     const [result] = await connection.execute(
       `INSERT INTO orders (order_number, table_number, meal_period, guest_count, status)
        VALUES (?, '', '午餐', 1, 'confirmed')`,
@@ -505,8 +551,7 @@ export async function createOrder(order) {
     )
     for (const item of order.items) {
       await connection.execute(
-        `INSERT INTO order_items (order_id, dish_id, dish_name, option_name, note, quantity)
-         VALUES (?, (SELECT id FROM dishes WHERE id = ?), ?, ?, ?, 1)`,
+        'INSERT INTO order_items (order_id, dish_id, dish_name, option_name, note, quantity) VALUES (?, ?, ?, ?, ?, 1)',
         [result.insertId, item.dishId, item.name, item.option, item.note],
       )
     }

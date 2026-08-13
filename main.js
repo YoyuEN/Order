@@ -71,12 +71,26 @@ async function apiRequest(path, options = {}) {
   const controller = new AbortController()
   const timeout = window.setTimeout(() => controller.abort(), 8000)
   try {
+    const token = localStorage.getItem('api_token') || ''
+    const headers = { 'Content-Type': 'application/json', ...options.headers }
+    if (token) headers['X-Api-Token'] = token
+
     const response = await fetch(`${apiBaseUrl}${path}`, {
       ...options,
-      headers: { 'Content-Type': 'application/json', ...options.headers },
+      headers,
       signal: controller.signal,
     })
-    if (!response.ok) throw new Error(`API request failed: ${response.status}`)
+
+    if (!response.ok) {
+      let message = `请求失败（${response.status}）`
+      try {
+        const body = await response.json()
+        if (body?.error) message = body.error
+      } catch (e) {
+        // 非 JSON 响应，保持默认消息
+      }
+      throw new Error(message)
+    }
     return response.status === 204 ? null : await response.json()
   } finally {
     window.clearTimeout(timeout)
