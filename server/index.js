@@ -292,6 +292,8 @@ app.put('/api/users/:id/menu', async (request, response, next) => {
 app.get('/api/dishes', async (request, response, next) => {
   try {
     const userId = Number(request.get('X-User-Id') || 0)
+    // 菜单按登录用户（X-User-Id）过滤，响应必须禁止缓存，否则浏览器可能把 A 账户的菜单发给 B 账户
+    response.setHeader('Cache-Control', 'no-store')
     response.json(await listDishes(userId || null))
   } catch (error) {
     next(error)

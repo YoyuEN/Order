@@ -204,11 +204,27 @@ async function uploadDishImage(file) {
   }
 }
 
+// 切换账户时清空上一个账户的数据，避免串号（菜单/留言/订单服务端都按 X-User-Id 过滤）
+function resetUserData() {
+  dishes = []
+  dishesStatus = 'loading'
+  messages = []
+  messagesStatus = 'loading'
+  state.picks = []
+  state.orderHistory = []
+  state.orderHistoryStatus = 'idle'
+  state.currentOrderId = null
+  state.orderNumber = ''
+  state.confirmed = false
+  state.confirmedCount = 0
+}
+
 async function loadDishes() {
   dishesStatus = 'loading'
   render()
   try {
-    const remoteDishes = await apiRequest('/api/dishes')
+    // cache: no-store —— 菜品列表按登录用户过滤，必须每次重新拉取，避免读到别的账户的缓存菜单
+    const remoteDishes = await apiRequest('/api/dishes', { cache: 'no-store' })
     if (Array.isArray(remoteDishes)) {
       dishes = remoteDishes
       dishesStatus = 'ready'
@@ -1443,8 +1459,14 @@ document.addEventListener('submit', async (event) => {
       const user = await loginUser(username, password)
       state.currentUser = user
       state.authError = ''
+      resetUserData()
       navigate('menu', { replace: true })
       showToast(`欢迎回来，${user.displayName}`)
+      // 每个账户各自加载自己的菜单/留言/订单（服务端按 X-User-Id 过滤）
+      loadDishes()
+      loadMessages({ silent: true })
+      loadLatestOrder()
+      loadOrderHistory()
     } catch (error) {
       state.authError = error.message || ADMIN_CONTACT_MESSAGE
       render()
@@ -1852,6 +1874,8 @@ document.addEventListener('click', async (event) => {
     state.currentUser = null
     state.authError = ''
     state.view = 'login'
+    // 清空上一个账户的数据，避免下一个登录的账户看到别人的菜单/留言/订单
+    resetUserData()
     navigate('login', { replace: true })
     return
   }
