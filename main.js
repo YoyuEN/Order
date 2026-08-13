@@ -27,12 +27,18 @@ function restoreCurrentUserSession() {
   const persisted = getCurrentUser()
   if (persisted) {
     state.currentUser = persisted
-    if (state.view === 'login') state.view = 'menu'
+    if (state.view === 'login' || state.view === 'profile' || state.view === 'history') {
+      state.view = 'menu'
+    }
+    if (window.history.state?.app === historyKey) {
+      window.history.replaceState(navigationState(window.scrollY), '')
+    }
     return
   }
   if (state.currentUser) {
     state.currentUser = null
     state.view = 'login'
+    window.history.replaceState(navigationState(window.scrollY), '')
   }
 }
 
@@ -301,6 +307,7 @@ const icons = {
   send: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4 20-7Z"/><path d="M22 2 11 13"/></svg>',
   message: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 4h16v12H9l-5 4V4Z"/><path d="M8 9h8M8 12h5"/></svg>',
   close: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"/></svg>',
+  logout: '<svg aria-hidden="true" class="icon" viewBox="0 0 1024 1024" version="1.1" xmlns="http://www.w3.org/2000/svg" p-id="1692"><path d="M856.4 767.1V871c0 12.8-10.4 23.3-23.3 23.3H192.6c-12.8 0-23.3-10.4-23.3-23.3V185.5c0-12.8 10.4-23.3 23.3-23.3h640.5c12.8 0 23.3 10.4 23.3 23.3v103.9h40V185.5c0-34.9-28.4-63.3-63.3-63.3H192.6c-34.9 0-63.3 28.4-63.3 63.3V871c0 34.9 28.4 63.3 63.3 63.3h640.5c34.9 0 63.3-28.4 63.3-63.3V767.1h-40z" fill="currentColor" p-id="1693"></path><path d="M779.1 352.8l-25.7 30.7L903.7 509H503v40h400.3L753.5 672.9l25.5 30.8 211.2-174.6z" fill="currentColor" p-id="1694"></path></svg>',
   heart: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 21C12 21 3 14 3 8a5 5 0 0 1 9-3 5 5 0 0 1 9 3c0 6-9 13-9 13Z"/></svg>',
   user: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z"/><path d="M4 22a8 8 0 0 1 16 0"/></svg>',
   more: '<svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg>',
@@ -1075,7 +1082,7 @@ function profileView() {
   const adminAction = state.currentUser?.role === 'admin'
     ? `<button class="profile-action" data-action="create-user">${icons.user}<span>创建用户</span></button><button class="profile-action" data-action="assign-menu">${icons.list}<span>分配菜单</span></button>`
     : ''
-  return `<main class="subpage"><header class="subpage-header"><span></span><h1>我的</h1><span></span></header>
+  return `<main class="subpage"><header class="subpage-header"><span></span><h1>我的</h1><button type="button" class="profile-action profile-action--danger icon-only" data-action="logout" aria-label="退出登录">${icons.logout}</button></header>
     <section class="profile-page" aria-label="个人中心">
       <div class="profile-card"><div class="profile-avatar">${icons.user}</div><div><b>${escapeHtml(displayName)}</b><span>和家人一起点今天想吃的菜</span></div></div>
       <div class="profile-stats">
@@ -1086,8 +1093,7 @@ function profileView() {
       <div class="profile-actions">
         ${adminAction}
         <button class="profile-action" data-action="favorites">${icons.heart}<span>我的收藏</span></button>
-        <button class="profile-action" data-action="history">${icons.list}<span>记录</span></button>
-        <button class="profile-action profile-action--danger" data-action="logout">${icons.close}<span>退出登录</span></button>
+        <button class="profile-action" data-action="history">${icons.list}<span>点餐记录</span></button>
       </div>
     </section>${bottomBar()}</main>`
 }
@@ -1435,8 +1441,7 @@ document.addEventListener('submit', async (event) => {
       const user = await loginUser(username, password)
       state.currentUser = user
       state.authError = ''
-      state.view = 'menu'
-      render()
+      navigate('menu', { replace: true })
       showToast(`欢迎回来，${user.displayName}`)
     } catch (error) {
       state.authError = error.message || ADMIN_CONTACT_MESSAGE
@@ -1845,7 +1850,7 @@ document.addEventListener('click', async (event) => {
     state.currentUser = null
     state.authError = ''
     state.view = 'login'
-    render()
+    navigate('login', { replace: true })
     return
   }
   if (action === 'clear' && window.confirm('确定清空全部已点菜品吗？')) {
