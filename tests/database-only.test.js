@@ -21,6 +21,12 @@ test('管理员具备创建用户入口和数据库创建路由', () => {
   assert.match(databaseSource, /export async function createUser/)
 })
 
+test('刷新后如果已登录，应直接恢复到菜单页而不是回到登录页', () => {
+  assert.match(mainSource, /const persistedUser = getCurrentUser\(\)/)
+  assert.match(mainSource, /function restoreCurrentUserSession\(\)/)
+  assert.match(mainSource, /state\.view = 'menu'/)
+})
+
 test('清空已点菜单会同步取消数据库中的当前菜单', () => {
   assert.match(mainSource, /apiRequest\('\/api\/orders\/current', \{ method: 'DELETE' \}\)/)
   assert.match(serverSource, /app\.delete\('\/api\/orders\/current'/)

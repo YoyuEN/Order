@@ -8,14 +8,28 @@ let dishes = []
 let dishesStatus = 'loading'
 let messages = []
 let messagesStatus = 'loading'
+const persistedUser = getCurrentUser()
 const state = {
   category: '全部', search: '', picks: [],
   currentOrderId: null,
   orderHistory: [], orderHistoryStatus: 'idle',
-  selectedDish: null, editingDish: null, selectedOption: '', note: '', view: 'login', orderNumber: '', confirmed: false, confirmedCount: 0, imagePreviewOpen: false, imagePreviewSrc: '', imagePreviewAlt: '', imagePreviewReturnSelector: null, showSuccessModal: false, moreMenuOpen: false, ordersMenuOpen: false, messageDraft: '',
-  currentUser: getCurrentUser(),
+  selectedDish: null, editingDish: null, selectedOption: '', note: '', view: persistedUser ? 'menu' : 'login', orderNumber: '', confirmed: false, confirmedCount: 0, imagePreviewOpen: false, imagePreviewSrc: '', imagePreviewAlt: '', imagePreviewReturnSelector: null, showSuccessModal: false, moreMenuOpen: false, ordersMenuOpen: false, messageDraft: '',
+  currentUser: persistedUser,
   authError: '',
   createUserError: '',
+}
+
+function restoreCurrentUserSession() {
+  const persisted = getCurrentUser()
+  if (persisted) {
+    state.currentUser = persisted
+    if (state.view === 'login') state.view = 'menu'
+    return
+  }
+  if (state.currentUser) {
+    state.currentUser = null
+    state.view = 'login'
+  }
 }
 
 const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
@@ -1235,6 +1249,7 @@ function loginView() {
 }
 
 function render() {
+  restoreCurrentUserSession()
   const categoryScrollLeft = document.querySelector('.categories')?.scrollLeft
   const messagesScrollTop = state.view === 'messages' ? window.scrollY : 0
   const views = {
