@@ -1,6 +1,7 @@
 import './style.css'
 import { registerSW } from 'virtual:pwa-register'
 import { App } from '@capacitor/app'
+import { shouldSkipSearchRender } from './search-ime.js'
 
 let dishes = []
 let dishesStatus = 'loading'
@@ -1718,9 +1719,20 @@ document.addEventListener('submit', async (event) => {
 })
 
 document.addEventListener('input', (event) => {
-  if (event.target.id === 'dish-search') { state.search = event.target.value; const position = event.target.selectionStart; render(); const input = document.querySelector('#dish-search'); input.focus(); input.setSelectionRange(position, position) }
+  if (event.target.id === 'dish-search') {
+    if (shouldSkipSearchRender(event)) return
+    state.search = event.target.value
+    render()
+    return
+  }
   if (event.target.id === 'message-input') { state.messageDraft = event.target.value; return }
   if (event.target.closest('#dish-form')) saveFormDraft()
+})
+
+document.addEventListener('compositionend', (event) => {
+  if (event.target.id !== 'dish-search') return
+  state.search = event.target.value
+  render()
 })
 
 document.addEventListener('focusout', (event) => {
