@@ -1,5 +1,8 @@
 const AUTH_STORAGE_KEY = 'order-app-current-user'
 const fallbackStorage = new Map()
+// Android 打包后页面源是 Capacitor 的 http://localhost，相对路径 /api 不会命中真实后端，
+// 必须与 main.js 的 apiRequest 一致，使用 VITE_API_URL 拼接完整地址。
+const apiBaseUrl = (import.meta.env.VITE_API_URL || '').replace(/\/$/, '')
 
 export const ADMIN_CONTACT_MESSAGE = '暂无可用账号，请联系管理员申请账户后再登录。'
 
@@ -75,7 +78,7 @@ export async function loginUser(username, password) {
   }
 
   try {
-    const response = await fetch('/api/auth/login', {
+    const response = await fetch(`${apiBaseUrl}/api/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username: inputName, password: inputPassword }),

@@ -27,7 +27,9 @@ function restoreCurrentUserSession() {
   const persisted = getCurrentUser()
   if (persisted) {
     state.currentUser = persisted
-    if (state.view === 'login' || state.view === 'profile' || state.view === 'history') {
+    // 仅在冷启动落在登录页时跳转到菜单；不要重置 profile/history，
+    // 否则每次 render() 都会把“我的/点餐记录”视图强制切回菜单。
+    if (state.view === 'login') {
       state.view = 'menu'
     }
     if (window.history.state?.app === historyKey) {
