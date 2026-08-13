@@ -17,6 +17,10 @@ const state = {
   currentUser: persistedUser,
   authError: '',
   createUserError: '',
+  assignMenuError: '',
+  assignMenuUsers: [],
+  assignMenuSelectedUserId: null,
+  assignMenuDishIds: [],
 }
 
 function restoreCurrentUserSession() {
@@ -1025,7 +1029,7 @@ function profileView() {
   const favoriteCount = dishes.filter((dish) => dish.favorite).length
   const displayName = state.currentUser?.displayName || '管理员'
   const adminAction = state.currentUser?.role === 'admin'
-    ? `<button class="profile-action" data-action="create-user">${icons.user}<span>创建用户</span></button>`
+    ? `<button class="profile-action" data-action="create-user">${icons.user}<span>创建用户</span></button><button class="profile-action" data-action="assign-menu">${icons.list}<span>分配菜单</span></button>`
     : ''
   return `<main class="subpage"><header class="subpage-header"><span></span><h1>我的</h1><span></span></header>
     <section class="profile-page" aria-label="个人中心">
@@ -1042,6 +1046,56 @@ function profileView() {
         <button class="profile-action" data-action="message-history">${icons.message}<span>留言历史</span></button>
         <button class="profile-action profile-action--danger" data-action="logout">${icons.close}<span>退出登录</span></button>
       </div>
+    </section>${bottomBar()}</main>`
+}
+
+async function loadUserMenuAssignmentOptions() {
+  try {
+    const users = await apiRequest('/api/users')
+    state.assignMenuUsers = Array.isArray(users) ? users : []
+    if (!state.assignMenuUsers.length) {
+      state.assignMenuSelectedUserId = null
+      state.assignMenuDishIds = []
+      return
+    }
+    const nextSelected = state.assignMenuUsers.some((user) => Number(user.id) === Number(state.assignMenuSelectedUserId))
+      ? state.assignMenuSelectedUserId
+      : state.assignMenuUsers[0].id
+    state.assignMenuSelectedUserId = Number(nextSelected)
+    const { dishIds = [] } = await apiRequest(`/api/users/${state.assignMenuSelectedUserId}/menu`)
+    state.assignMenuDishIds = Array.isArray(dishIds) ? dishIds : []
+    state.assignMenuError = ''
+  } catch (error) {
+    state.assignMenuError = error.message || '菜单分配失败'
+    state.assignMenuUsers = []
+    state.assignMenuDishIds = []
+    state.assignMenuSelectedUserId = null
+  }
+}
+
+function userMenuView() {
+  const selectedUserId = Number(state.assignMenuSelectedUserId || 0)
+  const selectedUser = state.assignMenuUsers.find((user) => Number(user.id) === selectedUserId) || state.assignMenuUsers[0] || null
+  const dishList = dishes.length
+    ? dishes.map((dish) => {
+        const checked = state.assignMenuDishIds.includes(Number(dish.id))
+        return `<label class="menu-assignment-item"><input type="checkbox" name="dishId" value="${dish.id}" ${checked ? 'checked' : ''}><span>${escapeHtml(dish.name)}</span><small>${escapeHtml(dish.category || '其他')}</small></label>`
+      }).join('')
+    : '<div class="empty"><b>没有可分配的菜单</b><span>先添加菜品后再设置用户权限</span></div>'
+
+  return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close-user-menu" aria-label="返回个人中心">${icons.back}</button><h1>分配菜单</h1><span></span></header>
+    <section class="profile-page" aria-label="分配菜单">
+      <form id="assign-menu-form" class="login-form" novalidate>
+        <label class="login-field">
+          <span>用户</span>
+          <select id="assign-menu-user" name="userId" ${state.assignMenuUsers.length ? '' : 'disabled'}>
+            ${state.assignMenuUsers.map((user) => `<option value="${user.id}" ${selectedUser && Number(user.id) === Number(selectedUser.id) ? 'selected' : ''}>${escapeHtml(user.displayName || user.username)}</option>`).join('') || '<option value="">暂无用户</option>'}
+          </select>
+        </label>
+        ${state.assignMenuError ? `<p class="login-error" role="alert">${escapeHtml(state.assignMenuError)}</p>` : ''}
+        <div class="menu-assignment-list">${dishList}</div>
+        <button type="submit" class="primary-button login-submit">保存分配</button>
+      </form>
     </section>${bottomBar()}</main>`
 }
 
@@ -1262,6 +1316,7 @@ function render() {
     favorites: favoritesView,
     profile: profileView,
     userCreate: userCreateView,
+    userMenu: userMenuView,
     messages: messagesView,
     history: historyView,
     messageHistory: messageHistoryView,
@@ -1370,6 +1425,53 @@ document.addEventListener('submit', async (event) => {
       render()
     }
   }
+
+  if (event.target.id === 'assign-menu-form') {
+    event.preventDefault()
+    const form = event.target
+    const userId = Number(form.querySelector('#assign-menu-user')?.value || 0)
+    if (!userId) {
+      state.assignMenuError = '请选择要分配菜单的用户'
+      render()
+      return
+    }
+    const selectedDishIds = [...form.querySelectorAll('input[name="dishId"]:checked')].map((input) => Number(input.value)).filter((value) => Number.isFinite(value) && value > 0)
+    try {
+      await apiRequest(`/api/users/${userId}/menu`, {
+        method: 'PUT',
+        body: JSON.stringify({ dishIds: selectedDishIds }),
+      })
+      state.assignMenuDishIds = selectedDishIds
+      state.assignMenuError = ''
+      showToast('菜单权限已保存')
+      navigate('profile', { replace: true })
+    } catch (error) {
+      state.assignMenuError = error.message || '保存菜单权限失败'
+      render()
+    }
+  }
+})
+
+document.addEventListener('change', async (event) => {
+  if (event.target.id === 'assign-menu-user') {
+    const userId = Number(event.target.value || 0)
+    if (!userId) {
+      state.assignMenuSelectedUserId = null
+      state.assignMenuDishIds = []
+      render()
+      return
+    }
+    state.assignMenuSelectedUserId = userId
+    try {
+      const { dishIds = [] } = await apiRequest(`/api/users/${userId}/menu`)
+      state.assignMenuDishIds = Array.isArray(dishIds) ? dishIds : []
+      state.assignMenuError = ''
+    } catch (error) {
+      state.assignMenuError = error.message || '加载用户菜单失败'
+      state.assignMenuDishIds = []
+    }
+    render()
+  }
 })
 
 document.addEventListener('click', async (event) => {
@@ -1380,6 +1482,25 @@ document.addEventListener('click', async (event) => {
   if (action === 'create-user') {
     state.createUserError = ''
     navigate('userCreate')
+    return
+  }
+  if (action === 'assign-menu') {
+    state.assignMenuError = ''
+    state.assignMenuUsers = []
+    state.assignMenuSelectedUserId = null
+    state.assignMenuDishIds = []
+    try {
+      await loadUserMenuAssignmentOptions()
+      navigate('userMenu')
+    } catch (error) {
+      state.assignMenuError = error.message || '加载分配菜单失败'
+      render()
+    }
+    return
+  }
+  if (action === 'close-user-menu') {
+    state.assignMenuError = ''
+    navigate('profile', { replace: true })
     return
   }
   if (action === 'close-user-create') {

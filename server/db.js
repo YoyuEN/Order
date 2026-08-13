@@ -24,10 +24,15 @@ export const pool = mysql.createPool({
   enableKeepAlive: true,
 })
 
+let initializationPromise = null
+
 export async function initializeDatabase() {
-  const connection = await pool.getConnection()
-  try {
-    await connection.query(`CREATE TABLE IF NOT EXISTS dishes (
+  if (initializationPromise) return initializationPromise
+
+  initializationPromise = (async () => {
+    const connection = await pool.getConnection()
+    try {
+      await connection.query(`CREATE TABLE IF NOT EXISTS dishes (
           id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
           category VARCHAR(50) NOT NULL,
           name VARCHAR(100) NOT NULL,
@@ -68,7 +73,11 @@ export async function initializeDatabase() {
     ) ENGINE=InnoDB`)
     const [stepImageColumns] = await connection.query("SHOW COLUMNS FROM dish_steps LIKE 'image_url'")
     if (!stepImageColumns.length) {
-      await connection.query('ALTER TABLE dish_steps ADD COLUMN image_url VARCHAR(1000) NULL AFTER instruction')
+      try {
+        await connection.query('ALTER TABLE dish_steps ADD COLUMN image_url VARCHAR(1000) NULL AFTER instruction')
+      } catch (error) {
+        if (!['ER_DUP_FIELDNAME', '1060'].includes(String(error.code))) throw error
+      }
     }
     await connection.query(`CREATE TABLE IF NOT EXISTS users (
           id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -92,13 +101,30 @@ export async function initializeDatabase() {
         ) ENGINE=InnoDB`)
     await connection.query(`CREATE TABLE IF NOT EXISTS orders (
           id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+          user_id BIGINT UNSIGNED NULL,
           order_number VARCHAR(32) NOT NULL,
           status ENUM('draft', 'confirmed', 'completed', 'cancelled') NOT NULL DEFAULT 'draft',
           created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           PRIMARY KEY (id), UNIQUE KEY uk_orders_order_number (order_number),
-          INDEX idx_orders_created_at (created_at), INDEX idx_orders_status (status)
+          INDEX idx_orders_user_id (user_id), INDEX idx_orders_created_at (created_at), INDEX idx_orders_status (status)
         ) ENGINE=InnoDB`)
+    const [orderUserColumns] = await connection.query("SHOW COLUMNS FROM orders LIKE 'user_id'")
+    if (!orderUserColumns.length) {
+      try {
+        await connection.query('ALTER TABLE orders ADD COLUMN user_id BIGINT UNSIGNED NULL AFTER status')
+      } catch (error) {
+        if (!['ER_DUP_FIELDNAME', '1060'].includes(String(error.code))) throw error
+      }
+    }
+    const [orderUserIndex] = await connection.query("SHOW INDEX FROM orders WHERE Key_name = 'idx_orders_user_id'")
+    if (!orderUserIndex.length) {
+      try {
+        await connection.query('CREATE INDEX idx_orders_user_id ON orders (user_id, created_at)')
+      } catch (error) {
+        if (!['ER_DUP_KEYNAME', '1061'].includes(String(error.code))) throw error
+      }
+    }
     await connection.query(`CREATE TABLE IF NOT EXISTS order_items (
           id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
           order_id BIGINT UNSIGNED NOT NULL,
@@ -118,17 +144,49 @@ export async function initializeDatabase() {
     await connection.query(`CREATE TABLE IF NOT EXISTS messages (
           id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
           content VARCHAR(500) NOT NULL,
+          order_id BIGINT UNSIGNED NULL,
+          user_id BIGINT UNSIGNED NULL,
           created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          PRIMARY KEY (id), INDEX idx_messages_created_at (created_at)
+          PRIMARY KEY (id), INDEX idx_messages_created_at (created_at), INDEX idx_messages_user_id (user_id), INDEX idx_messages_order_id (order_id)
         ) ENGINE=InnoDB`)
     const [messageOrderColumns] = await connection.query("SHOW COLUMNS FROM messages LIKE 'order_id'")
     if (!messageOrderColumns.length) {
-      await connection.query('ALTER TABLE messages ADD COLUMN order_id BIGINT UNSIGNED NULL AFTER content')
+      try {
+        await connection.query('ALTER TABLE messages ADD COLUMN order_id BIGINT UNSIGNED NULL AFTER content')
+      } catch (error) {
+        if (!['ER_DUP_FIELDNAME', '1060'].includes(String(error.code))) throw error
+      }
+    }
+    const [messageUserColumns] = await connection.query("SHOW COLUMNS FROM messages LIKE 'user_id'")
+    if (!messageUserColumns.length) {
+      try {
+        await connection.query('ALTER TABLE messages ADD COLUMN user_id BIGINT UNSIGNED NULL AFTER order_id')
+      } catch (error) {
+        if (!['ER_DUP_FIELDNAME', '1060'].includes(String(error.code))) throw error
+      }
     }
     const [messageColumns] = await connection.query("SHOW COLUMNS FROM messages LIKE 'updated_at'")
     if (!messageColumns.length) {
-      await connection.query('ALTER TABLE messages ADD COLUMN updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at')
+      try {
+        await connection.query('ALTER TABLE messages ADD COLUMN updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP AFTER created_at')
+      } catch (error) {
+        if (!['ER_DUP_FIELDNAME', '1060'].includes(String(error.code))) throw error
+      }
+    }
+    const [messageUserIndex] = await connection.query("SHOW INDEX FROM messages WHERE Key_name = 'idx_messages_user_id'")
+    if (!messageUserIndex.length) {
+      try {
+        await connection.query('CREATE INDEX idx_messages_user_id ON messages (user_id, created_at)')
+      } catch (error) {
+        if (!['ER_DUP_KEYNAME', '1061'].includes(String(error.code))) throw error
+      }
+    }
+    const [adminUserRow] = await connection.execute('SELECT id FROM users WHERE username = ? LIMIT 1', ['admin'])
+    if (adminUserRow[0]?.id) {
+      await connection.execute('UPDATE orders SET user_id = ? WHERE user_id IS NULL AND status != ? LIMIT 1000', [adminUserRow[0].id, 'completed'])
+      await connection.execute('UPDATE orders SET user_id = ? WHERE user_id IS NULL AND status = ? LIMIT 1000', [adminUserRow[0].id, 'completed'])
+      await connection.execute('UPDATE messages SET user_id = ? WHERE user_id IS NULL LIMIT 1000', [adminUserRow[0].id])
     }
     // 每单最多一条留言：先清理历史重复（优先保留非空内容、最新一条），再建唯一索引；order_id 为 NULL 的通用留言不受影响
     const [messageOrderUniqueIndexes] = await connection.query("SHOW INDEX FROM messages WHERE Key_name = 'uk_messages_order'")
@@ -155,7 +213,11 @@ export async function initializeDatabase() {
           await connection.execute('DELETE FROM messages WHERE order_id = ? AND id != ?', [order_id, keepId])
         }
       }
-      await connection.query('ALTER TABLE messages ADD UNIQUE KEY uk_messages_order (order_id)')
+      try {
+        await connection.query('ALTER TABLE messages ADD UNIQUE KEY uk_messages_order (order_id)')
+      } catch (error) {
+        if (!['ER_DUP_KEYNAME', '1061'].includes(String(error.code))) throw error
+      }
     }
     await connection.query(`CREATE TABLE IF NOT EXISTS app_metadata (
       metadata_key VARCHAR(100) NOT NULL,
@@ -174,9 +236,17 @@ export async function initializeDatabase() {
         ['default_dishes_version', '1'],
       )
     }
-    await ensureAdminUserAssignment(connection)
-  } finally {
-    connection.release()
+      await ensureAdminUserAssignment(connection)
+    } finally {
+      connection.release()
+    }
+  })()
+
+  try {
+    return await initializationPromise
+  } catch (error) {
+    initializationPromise = null
+    throw error
   }
 }
 
@@ -254,6 +324,18 @@ export async function getUserById(userId) {
     [userId],
   )
   return rows[0] || null
+}
+
+export async function listUsers() {
+  const [rows] = await pool.query(
+    'SELECT id, username, display_name, role FROM users ORDER BY id ASC',
+  )
+  return rows.map((row) => ({
+    id: Number(row.id),
+    username: row.username,
+    displayName: row.display_name || row.username,
+    role: row.role,
+  }))
 }
 
 export async function createUser({ username, password, displayName, role = 'staff' }) {
@@ -593,34 +675,39 @@ function messageSummary(row) {
   }
 }
 
-export async function listMessages() {
-  const [rows] = await pool.query(
-    `SELECT m.id, m.content, m.order_id, m.created_at, m.updated_at,
+export async function listMessages(userId = null) {
+  const params = []
+  let query = `SELECT m.id, m.content, m.order_id, m.created_at, m.updated_at,
             o.id AS o_id, o.created_at AS o_created_at, o.status AS o_status,
             (SELECT GROUP_CONCAT(oi.dish_name SEPARATOR '、') FROM order_items oi WHERE oi.order_id = m.order_id) AS o_dishes
      FROM messages m
-     LEFT JOIN orders o ON o.id = m.order_id
-     ORDER BY m.id DESC LIMIT 500`,
-  )
+     LEFT JOIN orders o ON o.id = m.order_id`
+  if (userId) {
+    query += ' WHERE m.user_id = ?'
+    params.push(userId)
+  }
+  query += ' ORDER BY m.id DESC LIMIT 500'
+  const [rows] = await pool.query(query, params)
   return rows.map(messageRow)
 }
 
-export async function createMessage(content, orderId = null) {
+export async function createMessage(content, orderId = null, userId = null) {
+  const targetUserId = Number.isFinite(Number(userId)) && Number(userId) > 0 ? Number(userId) : null
   // 同一订单只保留一条留言：已存在则直接返回（用于点单初始化占位，避免重复创建）
   if (orderId !== null) {
     const [existingRows] = await pool.execute(
-      'SELECT id, content, order_id, created_at, updated_at FROM messages WHERE order_id = ? ORDER BY id DESC LIMIT 1',
-      [orderId],
+      'SELECT id, content, order_id, user_id, created_at, updated_at FROM messages WHERE order_id = ? AND (? IS NULL OR user_id = ?) ORDER BY id DESC LIMIT 1',
+      [orderId, targetUserId, targetUserId],
     )
     if (existingRows.length) return messageSummary(existingRows[0])
   }
   try {
     const [result] = await pool.execute(
-      'INSERT INTO messages (content, order_id) VALUES (?, ?)',
-      [content, orderId],
+      'INSERT INTO messages (content, order_id, user_id) VALUES (?, ?, ?)',
+      [content, orderId, targetUserId],
     )
     const [[row]] = await pool.execute(
-      'SELECT id, content, order_id, created_at, updated_at FROM messages WHERE id = ?',
+      'SELECT id, content, order_id, user_id, created_at, updated_at FROM messages WHERE id = ?',
       [result.insertId],
     )
     return messageSummary(row)
@@ -628,8 +715,8 @@ export async function createMessage(content, orderId = null) {
     // 并发创建占位留言撞唯一索引 uk_messages_order：返回已存在的那条
     if (error.code === 'ER_DUP_ENTRY' && orderId !== null) {
       const [[existing]] = await pool.execute(
-        'SELECT id, content, order_id, created_at, updated_at FROM messages WHERE order_id = ? ORDER BY id DESC LIMIT 1',
-        [orderId],
+        'SELECT id, content, order_id, user_id, created_at, updated_at FROM messages WHERE order_id = ? AND (? IS NULL OR user_id = ?) ORDER BY id DESC LIMIT 1',
+        [orderId, targetUserId, targetUserId],
       )
       if (existing) return messageSummary(existing)
     }
@@ -637,24 +724,25 @@ export async function createMessage(content, orderId = null) {
   }
 }
 
-export async function updateMessage(id, content, orderId = null) {
+export async function updateMessage(id, content, orderId = null, userId = null) {
   const connection = await pool.getConnection()
+  const targetUserId = Number.isFinite(Number(userId)) && Number(userId) > 0 ? Number(userId) : null
   try {
     await connection.beginTransaction()
     // 留言迁移/保存到已有留言的订单时，删除目标订单的其他留言，保证每单只有一条
     if (orderId !== null) {
-      await connection.execute('DELETE FROM messages WHERE order_id = ? AND id != ?', [orderId, id])
+      await connection.execute('DELETE FROM messages WHERE order_id = ? AND id != ? AND (? IS NULL OR user_id = ?)', [orderId, id, targetUserId, targetUserId])
     }
     const [result] = await connection.execute(
-      'UPDATE messages SET content = ?, order_id = ? WHERE id = ?',
-      [content, orderId, id],
+      'UPDATE messages SET content = ?, order_id = ?, user_id = COALESCE(user_id, ?) WHERE id = ? AND (? IS NULL OR user_id = ?)',
+      [content, orderId, targetUserId, id, targetUserId, targetUserId],
     )
     if (result.affectedRows === 0) {
       await connection.rollback()
       return null
     }
     const [[row]] = await connection.execute(
-      'SELECT id, content, order_id, created_at, updated_at FROM messages WHERE id = ?',
+      'SELECT id, content, order_id, user_id, created_at, updated_at FROM messages WHERE id = ?',
       [id],
     )
     await connection.commit()
@@ -667,18 +755,23 @@ export async function updateMessage(id, content, orderId = null) {
   }
 }
 
-export async function deleteMessage(id) {
-  const [result] = await pool.execute('DELETE FROM messages WHERE id = ?', [id])
+export async function deleteMessage(id, userId = null) {
+  const targetUserId = Number.isFinite(Number(userId)) && Number(userId) > 0 ? Number(userId) : null
+  const [result] = await pool.execute('DELETE FROM messages WHERE id = ? AND (? IS NULL OR user_id = ?)', [id, targetUserId, targetUserId])
   return result.affectedRows > 0
 }
 
-export async function createOrder(order) {
+export async function createOrder(order, userId = null) {
+  const targetUserId = Number.isFinite(Number(userId)) && Number(userId) > 0 ? Number(userId) : null
   const connection = await pool.getConnection()
   try {
     await connection.beginTransaction()
-    // 取代旧单并清理历史垃圾单：只保留 completed（点餐记录）与本次新建的 confirmed，
-    // 避免每次加菜都累积一张 cancelled 死单导致表无限膨胀
-    await connection.execute("DELETE FROM orders WHERE status != 'completed'")
+    // 只清理当前用户自己的未完成订单，避免账号间共享同一份“点单中”状态
+    if (targetUserId) {
+      await connection.execute("DELETE FROM orders WHERE user_id = ? AND status != 'completed'", [targetUserId])
+    } else {
+      await connection.execute("DELETE FROM orders WHERE status != 'completed'")
+    }
     // 订单号改为服务端生成，杜绝多设备同时用客户端时间戳撞号导致的串单
     const orderNumber = `ORD${Date.now()}${crypto.randomUUID().slice(0, 6).toUpperCase()}`
 
@@ -705,8 +798,8 @@ export async function createOrder(order) {
     }
 
     const [result] = await connection.execute(
-      `INSERT INTO orders (order_number, status) VALUES (?, 'confirmed')`,
-      [orderNumber],
+      `INSERT INTO orders (order_number, status, user_id) VALUES (?, 'confirmed', ?)`,
+      [orderNumber, targetUserId],
     )
     for (const item of order.items) {
       await connection.execute(
@@ -724,26 +817,46 @@ export async function createOrder(order) {
   }
 }
 
-export async function clearCurrentOrder() {
-  // 清空当前菜单：删除所有未完成订单（含历史遗留的 cancelled 死单）
+export async function clearCurrentOrder(userId = null) {
+  const targetUserId = Number.isFinite(Number(userId)) && Number(userId) > 0 ? Number(userId) : null
+  if (!targetUserId) {
+    const [result] = await pool.execute(
+      "DELETE FROM orders WHERE status != 'completed'",
+    )
+    return result.affectedRows > 0
+  }
   const [result] = await pool.execute(
-    "DELETE FROM orders WHERE status != 'completed'",
+    "DELETE FROM orders WHERE user_id = ? AND status != 'completed'",
+    [targetUserId],
   )
   return result.affectedRows > 0
 }
 
-export async function completeOrder(id) {
+export async function completeOrder(id, userId = null) {
+  const targetUserId = Number.isFinite(Number(userId)) && Number(userId) > 0 ? Number(userId) : null
+  if (!targetUserId) {
+    const [result] = await pool.execute(
+      "UPDATE orders SET status = 'completed' WHERE id = ? AND status = 'confirmed'",
+      [id],
+    )
+    return result.affectedRows > 0
+  }
   const [result] = await pool.execute(
-    "UPDATE orders SET status = 'completed' WHERE id = ? AND status = 'confirmed'",
-    [id],
+    "UPDATE orders SET status = 'completed' WHERE id = ? AND user_id = ? AND status = 'confirmed'",
+    [id, targetUserId],
   )
   return result.affectedRows > 0
 }
 
-export async function getLatestOrder() {
+export async function getLatestOrder(userId = null) {
+  const targetUserId = Number.isFinite(Number(userId)) && Number(userId) > 0 ? Number(userId) : null
   const [[order]] = await pool.query(
-      `SELECT id, order_number, created_at
+      targetUserId
+        ? `SELECT id, order_number, created_at
+     FROM orders WHERE status = 'confirmed' AND user_id = ? ORDER BY id DESC LIMIT 1`
+        : `SELECT id, order_number, created_at
      FROM orders WHERE status = 'confirmed' ORDER BY id DESC LIMIT 1`,
+    targetUserId ? [targetUserId] : [],
   )
   if (!order) return null
 
@@ -765,13 +878,19 @@ export async function getLatestOrder() {
   }
 }
 
-export async function listOrders({ days = 30 } = {}) {
+export async function listOrders({ days = 30, userId = null } = {}) {
+  const targetUserId = Number.isFinite(Number(userId)) && Number(userId) > 0 ? Number(userId) : null
   const [orderRows] = await pool.query(
-      `SELECT id, order_number, status, created_at
+      targetUserId
+        ? `SELECT id, order_number, status, created_at
+     FROM orders
+     WHERE user_id = ? AND status = 'completed' AND created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
+     ORDER BY created_at DESC, id DESC`
+        : `SELECT id, order_number, status, created_at
      FROM orders
      WHERE status = 'completed' AND created_at >= DATE_SUB(NOW(), INTERVAL ? DAY)
      ORDER BY created_at DESC, id DESC`,
-    [days],
+    targetUserId ? [targetUserId, days] : [days],
   )
   if (!orderRows.length) return []
   const ids = orderRows.map((row) => row.id)
@@ -792,21 +911,29 @@ export async function listOrders({ days = 30 } = {}) {
     })
     itemsByOrder.set(row.order_id, items)
   }
-  const [messageRows] = await pool.query(
-    `SELECT order_id, content FROM messages
+  const [messageRows] = targetUserId
+    ? await pool.query(
+      `SELECT order_id, content FROM messages
+     WHERE user_id = ? AND order_id IN (${placeholders}) ORDER BY order_id, id DESC`,
+      [targetUserId, ...ids],
+    )
+    : await pool.query(
+      `SELECT order_id, content FROM messages
      WHERE order_id IN (${placeholders}) ORDER BY order_id, id DESC`,
-    ids,
-  )
+      ids,
+    )
   const messageByOrder = new Map()
   for (const row of messageRows) {
     if (!messageByOrder.has(row.order_id)) messageByOrder.set(row.order_id, row.content)
   }
   return orderRows.map((row) => ({
-  id: Number(row.id),
-  orderNumber: row.order_number,
-  status: row.status,
-  createdAt: row.created_at,
-  items: itemsByOrder.get(row.id) || [],
-  message: messageByOrder.get(row.id) ?? null,
+    id: Number(row.id),
+    orderNumber: row.order_number,
+    status: row.status,
+    createdAt: row.created_at,
+    items: itemsByOrder.get(row.id) || [],
+    message: messageByOrder.get(row.id) ?? null,
   }))
 }
+
+await initializeDatabase()

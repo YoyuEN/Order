@@ -6,7 +6,7 @@ import { mkdir } from 'node:fs/promises'
 import { fileURLToPath } from 'node:url'
 import multer from 'multer'
 import { z } from 'zod'
-import { clearCurrentOrder, completeOrder, createDish, createMessage, createOrder, createUser, deleteDish, deleteMessage, getDish, getLatestOrder, getUserByUsername, initializeDatabase, listDishes, listMessages, listOrders, pool, setFavorite, updateDish, updateMessage } from './db.js'
+import { clearCurrentOrder, completeOrder, createDish, createMessage, createOrder, createUser, deleteDish, deleteMessage, getDish, getLatestOrder, getUserById, getUserByUsername, getUserMenuDishIds, initializeDatabase, listDishes, listMessages, listOrders, listUsers, pool, setFavorite, setUserMenuDishIds, updateDish, updateMessage } from './db.js'
 
 const app = express()
 const port = Number(process.env.PORT || 3001)
@@ -124,6 +124,10 @@ const createUserSchema = z.object({
   role: z.enum(['admin', 'staff']).optional(),
 })
 
+const userMenuAssignmentSchema = z.object({
+  dishIds: z.array(z.coerce.number().int().positive()).default([]),
+})
+
 const dishSchema = z.object({
   category: z.string().trim().max(50).default(''),
   name: z.string().trim().min(1).max(100),
@@ -194,6 +198,20 @@ app.post('/api/auth/login', async (request, response, next) => {
   }
 })
 
+app.get('/api/users', async (request, response, next) => {
+  try {
+    const currentUserId = Number(request.get('X-User-Id') || 0)
+    const [userRows] = await pool.execute('SELECT role FROM users WHERE id = ? LIMIT 1', [currentUserId])
+    if (!currentUserId || !userRows.length || userRows[0].role !== 'admin') {
+      response.status(403).json({ error: '只有管理员才能管理用户' })
+      return
+    }
+    response.json(await listUsers())
+  } catch (error) {
+    next(error)
+  }
+})
+
 app.post('/api/users', async (request, response, next) => {
   try {
     const currentUserId = Number(request.get('X-User-Id') || 0)
@@ -212,6 +230,60 @@ app.post('/api/users', async (request, response, next) => {
     })
 
     response.status(201).json(created)
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.get('/api/users/:id/menu', async (request, response, next) => {
+  try {
+    const currentUserId = Number(request.get('X-User-Id') || 0)
+    const [userRows] = await pool.execute('SELECT role FROM users WHERE id = ? LIMIT 1', [currentUserId])
+    if (!currentUserId || !userRows.length || userRows[0].role !== 'admin') {
+      response.status(403).json({ error: '只有管理员才能分配菜单' })
+      return
+    }
+    const userId = idSchema.parse(request.params.id)
+    const user = await getUserById(userId)
+    if (!user) {
+      response.status(404).json({ error: '用户不存在' })
+      return
+    }
+    response.json({
+      userId: Number(user.id),
+      username: user.username,
+      displayName: user.display_name || user.username,
+      role: user.role,
+      dishIds: await getUserMenuDishIds(userId),
+    })
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.put('/api/users/:id/menu', async (request, response, next) => {
+  try {
+    const currentUserId = Number(request.get('X-User-Id') || 0)
+    const [userRows] = await pool.execute('SELECT role FROM users WHERE id = ? LIMIT 1', [currentUserId])
+    if (!currentUserId || !userRows.length || userRows[0].role !== 'admin') {
+      response.status(403).json({ error: '只有管理员才能分配菜单' })
+      return
+    }
+    const userId = idSchema.parse(request.params.id)
+    const user = await getUserById(userId)
+    if (!user) {
+      response.status(404).json({ error: '用户不存在' })
+      return
+    }
+    const payload = userMenuAssignmentSchema.parse(request.body)
+    const nextDishIds = await setUserMenuDishIds(userId, payload.dishIds)
+    response.json({
+      userId: Number(user.id),
+      username: user.username,
+      displayName: user.display_name || user.username,
+      role: user.role,
+      dishIds: nextDishIds,
+    })
   } catch (error) {
     next(error)
   }
@@ -288,10 +360,11 @@ const messageSchema = z.object({
   orderId: z.coerce.number().int().positive().nullable().optional(),
 })
 
-app.get('/api/messages', async (_request, response, next) => {
+app.get('/api/messages', async (request, response, next) => {
   try {
+    const currentUserId = Number(request.get('X-User-Id') || 0)
     response.setHeader('Cache-Control', 'no-store')
-    response.json(await listMessages())
+    response.json(await listMessages(currentUserId || null))
   } catch (error) {
     next(error)
   }
@@ -299,8 +372,9 @@ app.get('/api/messages', async (_request, response, next) => {
 
 app.post('/api/messages', async (request, response, next) => {
   try {
+    const currentUserId = Number(request.get('X-User-Id') || 0)
     const { content, orderId } = messageSchema.parse(request.body)
-    response.status(201).json(await createMessage(content, orderId ?? null))
+    response.status(201).json(await createMessage(content, orderId ?? null, currentUserId || null))
   } catch (error) {
     next(error)
   }
@@ -308,8 +382,9 @@ app.post('/api/messages', async (request, response, next) => {
 
 app.put('/api/messages/:id', async (request, response, next) => {
   try {
+    const currentUserId = Number(request.get('X-User-Id') || 0)
     const { content, orderId } = messageSchema.parse(request.body)
-    const updated = await updateMessage(idSchema.parse(request.params.id), content, orderId ?? null)
+    const updated = await updateMessage(idSchema.parse(request.params.id), content, orderId ?? null, currentUserId || null)
     if (!updated) {
       response.status(404).json({ error: '留言不存在' })
       return
@@ -322,7 +397,8 @@ app.put('/api/messages/:id', async (request, response, next) => {
 
 app.delete('/api/messages/:id', async (request, response, next) => {
   try {
-    const deleted = await deleteMessage(idSchema.parse(request.params.id))
+    const currentUserId = Number(request.get('X-User-Id') || 0)
+    const deleted = await deleteMessage(idSchema.parse(request.params.id), currentUserId || null)
     if (!deleted) {
       response.status(404).json({ error: '留言不存在' })
       return
@@ -349,9 +425,10 @@ app.put('/api/dishes/:id/favorite', async (request, response, next) => {
   }
 })
 
-app.get('/api/orders/latest', async (_request, response, next) => {
+app.get('/api/orders/latest', async (request, response, next) => {
   try {
-    const order = await getLatestOrder()
+    const currentUserId = Number(request.get('X-User-Id') || 0)
+    const order = await getLatestOrder(currentUserId || null)
     if (!order) {
       response.status(204).end()
       return
@@ -365,17 +442,19 @@ app.get('/api/orders/latest', async (_request, response, next) => {
 
 app.get('/api/orders', async (request, response, next) => {
   try {
+    const currentUserId = Number(request.get('X-User-Id') || 0)
     const days = Math.min(Number(request.query.days) || 30, 90)
     response.setHeader('Cache-Control', 'no-store')
-    response.json(await listOrders({ days }))
+    response.json(await listOrders({ days, userId: currentUserId || null }))
   } catch (error) {
     next(error)
   }
 })
 
-app.delete('/api/orders/current', async (_request, response, next) => {
+app.delete('/api/orders/current', async (request, response, next) => {
   try {
-    await clearCurrentOrder()
+    const currentUserId = Number(request.get('X-User-Id') || 0)
+    await clearCurrentOrder(currentUserId || null)
     response.status(204).end()
   } catch (error) {
     next(error)
@@ -384,7 +463,8 @@ app.delete('/api/orders/current', async (_request, response, next) => {
 
 app.post('/api/orders', async (request, response, next) => {
   try {
-    response.status(201).json(await createOrder(orderSchema.parse(request.body)))
+    const currentUserId = Number(request.get('X-User-Id') || 0)
+    response.status(201).json(await createOrder(orderSchema.parse(request.body), currentUserId || null))
   } catch (error) {
     next(error)
   }
@@ -392,7 +472,8 @@ app.post('/api/orders', async (request, response, next) => {
 
 app.put('/api/orders/:id/complete', async (request, response, next) => {
   try {
-    const completed = await completeOrder(idSchema.parse(request.params.id))
+    const currentUserId = Number(request.get('X-User-Id') || 0)
+    const completed = await completeOrder(idSchema.parse(request.params.id), currentUserId || null)
     if (!completed) {
       response.status(404).json({ error: '订单不存在或已结束' })
       return
