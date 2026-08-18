@@ -1,4 +1,5 @@
 import './style.css'
+import { animateRenderedView, ambientMarkup } from './animations.js'
 import { registerSW } from 'virtual:pwa-register'
 import { App } from '@capacitor/app'
 import { shouldSkipSearchRender } from './search-ime.js'
@@ -417,6 +418,7 @@ function menuView() {
         ? filtered.map(dishCard).join('')
         : `<div class="empty"><b>${dishes.length ? '没有找到相关菜品' : '数据库中暂无菜品'}</b><span>${dishes.length ? '换个关键词或分类试试' : '请使用新增菜品录入菜单'}</span></div>`
   return `
+    ${ambientMarkup()}
     <main class="menu-layout">
       <section class="menu-panel" aria-labelledby="menu-heading">
         <div class="search-wrap">${icons.search}<label class="sr-only" for="dish-search">搜索菜品</label><input id="dish-search" type="search" placeholder="搜索想吃的菜" value="${escapeHtml(state.search)}" autocomplete="off"></div>
@@ -431,9 +433,9 @@ function menuView() {
 
 function dishCard(dish) {
   const selected = state.picks.some((item) => item.dishId === dish.id)
-  return `<article class="dish-card ${dish.soldOut ? 'sold-out' : ''}">
-    <button class="dish-open" data-dish="${dish.id}" ${dish.soldOut ? 'disabled' : ''} aria-label="查看${escapeAttr(dish.name)}详情">${imageMarkup(dish)}<span class="dish-info">${dish.badge ? `<small>${escapeHtml(dish.badge)}</small>` : ''}<b>${escapeHtml(dish.name)}</b><span>${escapeHtml(dish.desc)}</span>${dish.spicy ? `<span class="sales">${'🌶'.repeat(dish.spicy)}</span>` : ''}</span></button>
-    <div class="dish-footer"><span>${dish.soldOut ? '暂时售罄' : selected ? '已点' : '想吃就点它'}</span>${dish.soldOut ? '' : `<button class="add-button ${selected ? 'selected' : ''}" data-dish="${dish.id}" aria-label="${selected ? '已点' : '点选'}${escapeAttr(dish.name)}" ${selected ? 'disabled' : ''}>${selected ? '✓' : '+'}</button>`}</div>
+  return `<article class="dish-card ${dish.soldOut ? 'sold-out' : ''} ${selected ? 'is-selected' : ''}">
+    <div class="dish-open" data-dish="${dish.id}" role="button" tabindex="${dish.soldOut ? '-1' : '0'}" ${dish.soldOut ? 'aria-disabled="true"' : `aria-label="查看${escapeAttr(dish.name)}详情"`}>${imageMarkup(dish)}<span class="dish-info">${dish.badge ? `<small>${escapeHtml(dish.badge)}</small>` : ''}<span class="dish-name-row"><b>${escapeHtml(dish.name)}</b>${dish.soldOut ? '' : `<button class="add-button ${selected ? 'selected' : ''}" data-dish="${dish.id}" aria-label="${selected ? '已点' : '点选'}${escapeAttr(dish.name)}" ${selected ? 'disabled' : ''}>${selected ? '✓' : '+'}</button>`}</span><span>${escapeHtml(dish.desc)}</span>${dish.spicy ? `<span class="sales">${'🌶'.repeat(dish.spicy)}</span>` : ''}</span></div>
+    <div class="dish-footer"><span>${dish.soldOut ? '暂时售罄' : selected ? '已加入菜单' : '查看详情'}</span></div>
   </article>`
 }
 
@@ -1345,13 +1347,9 @@ function requireAuth() {
 
 function loginView() {
   return `
+    ${ambientMarkup()}
     <main class="login-screen">
       <section class="login-panel" aria-label="登录">
-        <div class="login-branding">
-          <div class="login-logo">${icons.user}</div>
-          <h1>乐梵小灶</h1>
-          <p>暂未开放注册，请联系管理员开通账号</p>
-        </div>
         <form id="login-form" class="login-form" novalidate>
           <label class="login-field">
             <span>账号</span>
@@ -1363,8 +1361,8 @@ function loginView() {
           </label>
           ${state.authError ? `<p class="login-error" role="alert">${escapeHtml(state.authError)}</p>` : ''}
           <button type="submit" class="primary-button login-submit">登录</button>
-          <p class="login-hint">没有账号？请联系管理员申请。</p>
         </form>
+        <p class="login-hint">暂未开放注册，请联系管理员开通账号</p>
       </section>
     </main>
   `
@@ -1395,11 +1393,13 @@ function render() {
   if (!requireAuth()) {
     document.querySelector('#app').innerHTML = loginView()
     document.body.classList.remove('image-preview-open', 'modal-open')
+    animateRenderedView()
     return
   }
   document.querySelector('#app').innerHTML = `${views[state.view]()}${imagePreview()}${successModal()}`
   document.body.classList.toggle('image-preview-open', state.imagePreviewOpen)
   document.body.classList.toggle('modal-open', state.showSuccessModal)
+  animateRenderedView()
   if (state.view === 'menu' && categoryScrollLeft !== undefined) document.querySelector('.categories').scrollLeft = categoryScrollLeft
   if (state.view === 'messages') restoreScroll(messagesScrollTop)
   if (state.imagePreviewOpen) document.querySelector('.image-lightbox-close')?.focus()
@@ -1549,7 +1549,12 @@ document.addEventListener('change', async (event) => {
 
 document.addEventListener('click', async (event) => {
   if (cartSwipeGesture.suppressClick) { cartSwipeGesture.suppressClick = false; return }
-  const button = event.target.closest('button'); if (!button) return
+  const button = event.target.closest('button')
+  const dishOpen = event.target.closest('.dish-open')
+  if (!button) {
+    if (dishOpen && !dishOpen.hasAttribute('aria-disabled')) openDish(dishOpen.dataset.dish)
+    return
+  }
   if (button.dataset.category) { state.category = button.dataset.category; render(); return }
   const action = button.dataset.action
   if (action === 'create-user') {
@@ -1947,6 +1952,12 @@ document.addEventListener('keydown', (event) => {
     state.messageDraft = buildMessageDraft()
     state.editingMessage = false
     render()
+    return
+  }
+  const dishOpen = event.target.closest('.dish-open')
+  if (dishOpen && (event.key === 'Enter' || event.key === ' ')) {
+    event.preventDefault()
+    if (!dishOpen.hasAttribute('aria-disabled')) openDish(dishOpen.dataset.dish)
     return
   }
   // 手机端软键盘没有 Shift 键：Enter 用于正常换行，保存交给按钮/失焦触发
