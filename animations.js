@@ -122,7 +122,6 @@ export function animateRenderedView() {
       // 保证「最后一行菜品」在任何情况下都能显示出来。
       const id = setTimeout(() => {
         const cs = getComputedStyle(card)
-        console.log('[DBG2] fallback, opacity:', cs.opacity, 'card:', card.querySelector('h3')?.textContent)
         if (cs.opacity === '0' || cs.visibility === 'hidden') {
           gsap.set(card, { autoAlpha: 1, y: 0, scale: 1 })
         }
@@ -144,10 +143,7 @@ export function animateRenderedView() {
         trigger: card,
         start: 'top 92%',
         once: true,
-        onEnter: () => {
-          console.log('[DBG2] onEnter:', card.querySelector('h3')?.textContent)
-          reveal(card)
-        },
+        onEnter: () => reveal(card),
         onRefresh: (self) => {
           // 位置刷新时若卡片已越过触发线（滚动恢复 / 图片加载后重排），立即显示
           if (self.progress > 0 || self.isActive) reveal(card)
@@ -160,7 +156,6 @@ export function animateRenderedView() {
     const raf = requestAnimationFrame(() => requestAnimationFrame(revealIfVisible))
     const timer = setTimeout(revealIfVisible, 800)
     return () => {
-      console.log('[DBG2] cleanup')
       triggers.forEach((st) => st.kill())
       cancelAnimationFrame(raf)
       clearTimeout(timer)
