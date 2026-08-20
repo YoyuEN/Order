@@ -4171,3 +4171,332 @@ body {
     padding: 22px 0 40px;
   }
 }
+
+/* ================= 界面视觉统一升级 =================
+   在「菜单/登录/配菜」新视觉的基础上，将剩余屏幕
+   （已点/购物车、留言、历史、我的、成功弹窗、表单、空状态）
+   统一到同一套设计语言：
+   —— 奶油纸底 + 宋体衬线标题 + 绿/红点缀
+   —— 同心圆角、tabular-nums 数字、text-wrap 平衡标题
+   —— 统一阴影、≥40px 触控区、显式过渡
+   ===================================================== */
+
+/* —— 子页面头部：柔和毛玻璃 + 宋体标题 —— */
+.subpage-header {
+  background: rgba(251, 250, 245, .92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom-color: rgba(38, 49, 44, .1);
+  box-shadow: 0 1px 0 rgba(38, 49, 44, .04);
+}
+
+.subpage-header h1 {
+  font-family: "Songti SC", "STSong", "SimSun", serif;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: .03em;
+  text-wrap: balance;
+}
+
+.subpage-header .icon-only {
+  background: var(--paper);
+  border: 1px solid rgba(38, 49, 44, .1);
+}
+
+.subpage-header .icon-only:hover {
+  background: #e6e9e2;
+}
+
+/* —— 按钮：统一圆角、阴影与红绿语义 —— */
+.primary-button,
+.secondary-button,
+.form-save-button {
+  border-radius: 12px;
+}
+
+.primary-button {
+  box-shadow: 0 8px 20px rgba(191, 76, 53, .25);
+}
+
+.secondary-button {
+  background: var(--cream);
+  border-color: rgba(38, 49, 44, .16);
+}
+
+.secondary-button:hover {
+  background: #f4f1e8;
+}
+
+.form-save-button {
+  box-shadow: 0 5px 14px rgba(191, 76, 53, .22);
+}
+
+.end-order-btn,
+.message-save-btn {
+  box-shadow: 0 4px 12px rgba(191, 76, 53, .22);
+}
+
+.repeat-order-btn {
+  border-radius: 12px;
+}
+
+/* —— 已点 / 购物车页 —— */
+.cart-page {
+  background: rgba(251, 250, 245, .96);
+  border-color: rgba(38, 49, 44, .1);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+}
+
+.cart-item b {
+  font-family: "Songti SC", "STSong", "SimSun", serif;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.cart-item-main small {
+  max-width: 100%;
+}
+
+.cart-item-main i {
+  color: #8a948b;
+}
+
+.remove-item {
+  border-radius: 12px 0 0 12px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .remove-item {
+    border-radius: 10px;
+  }
+}
+
+.bill-total strong,
+.checkout-bar strong {
+  font-variant-numeric: tabular-nums;
+}
+
+.checkout-bar {
+  background: rgba(251, 250, 245, .94);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top-color: rgba(38, 49, 44, .1);
+  box-shadow: 0 -8px 24px rgba(27, 46, 37, .06);
+}
+
+.checkout-bar .primary-button {
+  min-height: 50px;
+}
+
+/* —— 空状态：绿意点缀 —— */
+.empty-icon {
+  width: 66px;
+  height: 66px;
+  color: var(--green);
+  background: color-mix(in srgb, var(--green) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--green) 18%, transparent);
+}
+
+.empty b {
+  font-family: "Songti SC", "STSong", "SimSun", serif;
+  font-size: 17px;
+}
+
+/* —— 留言 / 信纸 —— */
+.note-card {
+  border: 1px solid rgba(38, 49, 44, .1);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+}
+
+.note-card-eyebrow {
+  color: var(--red);
+  font-weight: 800;
+}
+
+.note-picks b {
+  color: var(--red);
+}
+
+/* —— 历史页 —— */
+.history-page {
+  gap: 20px;
+}
+
+.order-day-group h2 {
+  color: #5f6a61;
+  font-family: "Songti SC", "STSong", "SimSun", serif;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.order-history-card {
+  background: rgba(251, 250, 245, .96);
+  border-color: rgba(38, 49, 44, .1);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+
+.order-history-items b {
+  font-family: "Songti SC", "STSong", "SimSun", serif;
+  font-size: 17px;
+  font-weight: 600;
+}
+
+.history-item {
+  background: rgba(251, 250, 245, .96);
+  border-color: rgba(38, 49, 44, .1);
+  border-radius: 13px;
+  box-shadow: var(--shadow);
+}
+
+.order-message-preview {
+  background: rgba(251, 250, 245, .96);
+  border-color: rgba(38, 49, 44, .1);
+  border-radius: 13px;
+}
+
+/* —— 我的 / 个人中心 —— */
+.profile-page {
+  padding-top: 22px;
+}
+
+.profile-card {
+  background: rgba(251, 250, 245, .96);
+  border-color: rgba(38, 49, 44, .1);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+}
+
+.profile-card b {
+  font-family: "Songti SC", "STSong", "SimSun", serif;
+  font-size: 24px;
+}
+
+.profile-avatar {
+  background: var(--green);
+  box-shadow: 0 6px 14px rgba(62, 115, 91, .28);
+}
+
+.profile-stats {
+  background: rgba(251, 250, 245, .96);
+  border-color: rgba(38, 49, 44, .1);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+
+.profile-stats b {
+  color: var(--red);
+  font-variant-numeric: tabular-nums;
+}
+
+.profile-action {
+  background: rgba(251, 250, 245, .96);
+  border-color: rgba(38, 49, 44, .1);
+  border-radius: 14px;
+  min-height: 52px;
+}
+
+.profile-action:hover {
+  background: #f6f3ea;
+  border-color: rgba(191, 76, 53, .28);
+}
+
+/* —— 成功弹窗 / 小票 —— */
+.success-modal h1,
+.success-view h1 {
+  font-family: "Songti SC", "STSong", "SimSun", serif;
+  font-weight: 700;
+}
+
+.order-ticket {
+  border-radius: 16px;
+  border-color: rgba(38, 49, 44, .1);
+}
+
+.order-ticket b {
+  font-variant-numeric: tabular-nums;
+}
+
+/* —— 表单页：同心圆角 + 聚焦语义 —— */
+.form-intro h2 {
+  font-size: 29px;
+}
+
+.category-select-trigger {
+  border-radius: 10px;
+  border-color: rgba(38, 49, 44, .16);
+}
+
+.category-select-options {
+  border-radius: 12px;
+  border: 1px solid rgba(38, 49, 44, .12);
+  box-shadow: var(--shadow);
+}
+
+.option-row {
+  border-radius: 10px;
+  border-color: rgba(38, 49, 44, .14);
+}
+
+.dish-cover-upload {
+  border-radius: 14px;
+}
+
+.dish-cover-placeholder strong {
+  font-family: "Songti SC", "STSong", "SimSun", serif;
+  font-size: 15px;
+}
+
+/* —— 详情页数字对齐 —— */
+.detail-meta strong {
+  font-variant-numeric: tabular-nums;
+}
+
+/* —— 更多菜单 —— */
+.more-menu-dropdown {
+  background: var(--cream);
+  border: 1px solid rgba(38, 49, 44, .1);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+
+.more-menu-item {
+  border-radius: 10px;
+}
+
+.more-menu-item:hover {
+  background: #f2efe6;
+}
+
+/* —— Toast —— */
+.toast {
+  background: rgba(38, 49, 44, .95);
+  border: 1px solid rgba(255, 255, 255, .1);
+  box-shadow: var(--shadow);
+  font-variant-numeric: tabular-nums;
+}
+
+/* —— 全局聚焦态统一 —— */
+:where(button, a, input, textarea, select, [role='button']):focus-visible {
+  outline: 3px solid rgba(191, 76, 53, .35);
+  outline-offset: 2px;
+}
+
+/* —— 桌面端：内容容器居中约束 —— */
+@media (min-width: 720px) {
+  .cart-page,
+  .profile-page,
+  .history-page,
+  .favorites-page {
+    width: min(680px, calc(100% - 40px));
+    margin-right: auto;
+    margin-left: auto;
+  }
+
+  .checkout-bar {
+    right: max(0px, calc((100vw - 1180px) / 2));
+    left: max(0px, calc((100vw - 1180px) / 2));
+  }
+}
