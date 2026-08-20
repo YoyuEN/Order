@@ -107,25 +107,65 @@ export function animateRenderedView() {
     const cards = document.querySelectorAll('.menu-layout .dish-card')
     if (!cards.length) return undefined
     gsap.set(cards, { autoAlpha: 0, y: 26, scale: 0.97 })
+    const cleanupTimers = []
+    const reveal = (card) => {
+      gsap.to(card, {
+        autoAlpha: 1,
+        y: 0,
+        scale: 1,
+        duration: 0.55,
+        ease: 'power3.out',
+        overwrite: 'auto',
+      })
+      // 硬兜底：某些环境（后台标签页 / 低端机）requestAnimationFrame 被节流甚至冻结，
+      // tween 不会推进。延迟后若卡片仍处于隐藏状态，直接强制落到最终可见状态，
+      // 保证「最后一行菜品」在任何情况下都能显示出来。
+      const id = setTimeout(() => {
+        const cs = getComputedStyle(card)
+        console.log('[DBG2] fallback, opacity:', cs.opacity, 'card:', card.querySelector('h3')?.textContent)
+        if (cs.opacity === '0' || cs.visibility === 'hidden') {
+          gsap.set(card, { autoAlpha: 1, y: 0, scale: 1 })
+        }
+      }, 650)
+      cleanupTimers.push(id)
+    }
+    // 兜底：把「已经处于视口内」的卡片立即浮现。
+    // 解决从详情页返回菜单恢复滚动位置、或懒加载图片后布局变化时，
+    // 最后一行卡片因 onEnter 未触发而永远卡在 opacity:0 的问题。
+    const revealIfVisible = () => {
+      const vh = window.innerHeight || document.documentElement.clientHeight
+      cards.forEach((card) => {
+        if (card.getBoundingClientRect().top < vh * 0.92) reveal(card)
+      })
+    }
     const triggers = []
     cards.forEach((card) => {
       const st = ScrollTrigger.create({
         trigger: card,
         start: 'top 92%',
         once: true,
-        onEnter: () =>
-          gsap.to(card, {
-            autoAlpha: 1,
-            y: 0,
-            scale: 1,
-            duration: 0.55,
-            ease: 'power3.out',
-            overwrite: 'auto',
-          }),
+        onEnter: () => {
+          console.log('[DBG2] onEnter:', card.querySelector('h3')?.textContent)
+          reveal(card)
+        },
+        onRefresh: (self) => {
+          // 位置刷新时若卡片已越过触发线（滚动恢复 / 图片加载后重排），立即显示
+          if (self.progress > 0 || self.isActive) reveal(card)
+        },
       })
       triggers.push(st)
     })
-    return () => triggers.forEach((st) => st.kill())
+    // 立即检查一次 + 等两帧与定时器再各检查一次，覆盖各种渲染/滚动时序
+    revealIfVisible()
+    const raf = requestAnimationFrame(() => requestAnimationFrame(revealIfVisible))
+    const timer = setTimeout(revealIfVisible, 800)
+    return () => {
+      console.log('[DBG2] cleanup')
+      triggers.forEach((st) => st.kill())
+      cancelAnimationFrame(raf)
+      clearTimeout(timer)
+      cleanupTimers.forEach(clearTimeout)
+    }
   })
 
   // —— 桌面端（精确指针）—— 菜单已改为平面列表（细线分隔），不再做卡片式 3D 倾斜 ——

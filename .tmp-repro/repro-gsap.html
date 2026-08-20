@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>菜单底部复现（含 GSAP 动画）</title>
+<link rel="stylesheet" href="/style.css">
+<style>
+  .ambient { display: none; }
+</style>
+</head>
+<body>
+<div id="app">
+  <main class="menu-layout">
+    <section class="menu-panel" aria-labelledby="menu-heading">
+      <div class="search-wrap"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><label class="sr-only" for="dish-search">搜索菜品</label><input id="dish-search" type="search" placeholder="搜索想吃的菜" autocomplete="off"></div>
+      <nav class="categories" aria-label="菜品分类">
+        <button class="category active" data-category="全部" aria-pressed="true">全部</button>
+        <button class="category" data-category="热菜">热菜</button>
+        <button class="category" data-category="凉菜">凉菜</button>
+        <button class="category" data-category="汤">汤</button>
+        <button class="category" data-category="主食">主食</button>
+      </nav>
+      <div class="section-title"><div><p class="eyebrow">今日菜单</p><h2 id="menu-heading">人气菜品</h2></div><span>11 道菜</span></div>
+      <div class="dish-grid" id="grid"></div>
+    </section>
+    <aside class="desktop-cart" aria-label="已点菜单"></aside>
+  </main>
+  <nav class="bottom-nav" aria-label="主导航">
+    <button class="nav-item active" data-action="menu"><svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/></svg><span>首页</span></button>
+    <button class="nav-item" data-action="orders"><svg viewBox="0 0 24 24"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/></svg><span>已点</span></button>
+    <button class="nav-center-btn" data-action="new-dish" aria-label="新增菜品"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+    <button class="nav-item" data-action="messages"><svg viewBox="0 0 24 24"><path d="M21 12a8 8 0 0 1-8 8H4l2-3a8 8 0 1 1 15-5z"/></svg><span>留言</span></button>
+    <button class="nav-item" data-action="profile"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 5-6 8-6s6.5 2 8 6"/></svg><span>我的</span></button>
+  </nav>
+</div>
+<script src="/gsap.js"></script>
+<script src="/ScrollTrigger.js"></script>
+<script>
+  gsap.registerPlugin(ScrollTrigger)
+
+  const names = ['红烧肉','清蒸鲈鱼','宫保鸡丁','麻婆豆腐','凉拌黄瓜','口水鸡','冬瓜排骨汤','番茄蛋汤','玉米排骨汤','扬州炒饭','白灼虾']
+  const grid = document.getElementById('grid')
+  grid.innerHTML = names.map((n, i) => `
+    <article class="dish-card">
+      <div class="dish-open" data-dish="${i+1}" role="button" tabindex="0">
+        <div class="dish-image"><img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='400' height='276'%3E%3Crect width='400' height='276' fill='%23dfe5da'/%3E%3C/svg%3E" alt="${n}" loading="lazy"><span aria-hidden="true">食</span></div>
+        <span class="dish-info"><span class="dish-name-row"><b>${n}</b><button class="add-button" data-dish="${i+1}" aria-label="点选${n}">+</button></span><span>精选优质食材，用心烹饪的家常美味</span></span>
+      </div>
+      <div class="dish-footer"><span>查看详情</span></div>
+    </article>`).join('')
+
+  // —— 复刻 animations.js 中菜单卡片 reveal 动画 ——
+  const cards = document.querySelectorAll('.menu-layout .dish-card')
+  gsap.set(cards, { autoAlpha: 0, y: 26, scale: 0.97 })
+  const triggers = []
+  cards.forEach((card) => {
+    const st = ScrollTrigger.create({
+      trigger: card,
+      start: 'top 92%',
+      once: true,
+      onEnter: () => gsap.to(card, { autoAlpha: 1, y: 0, scale: 1, duration: 0.55, ease: 'power3.out', overwrite: 'auto' }),
+    })
+    triggers.push(st)
+  })
+
+  // 诊断：滚动到底后检查每张卡片的可见状态
+  window.addEventListener('load', () => {
+    setTimeout(() => {
+      window.scrollTo({ top: document.body.scrollHeight, behavior: 'instant' })
+      setTimeout(() => {
+        const nav = document.querySelector('.bottom-nav')
+        const navRect = nav.getBoundingClientRect()
+        const rows = []
+        const cards2 = document.querySelectorAll('.dish-card')
+        cards2.forEach((c) => {
+          const r = c.getBoundingClientRect()
+          rows.push({ name: c.querySelector('b').textContent, opacity: getComputedStyle(c).opacity, visibility: getComputedStyle(c).visibility, top: Math.round(r.top), bottom: Math.round(r.bottom) })
+        })
+        const last = rows[rows.length - 1]
+        const pre = document.createElement('pre')
+        pre.id = 'diag'
+        pre.textContent = JSON.stringify({
+          navTop: Math.round(navRect.top), navBottom: Math.round(navRect.bottom),
+          scrollY: Math.round(window.scrollY), bodyScrollHeight: document.body.scrollHeight, innerHeight: window.innerHeight,
+          maxScrollY: document.body.scrollHeight - window.innerHeight,
+          lastCard: last,
+          lastVisible: Number(last.opacity) > 0 && last.bottom <= navRect.top,
+          cardCount: rows.length,
+        }, null, 2)
+        document.body.appendChild(pre)
+        document.title = 'SCROLLED'
+      }, 1200)
+    }, 500)
+  })
+</script>
+</body>
+</html>

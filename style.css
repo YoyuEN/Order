@@ -125,7 +125,7 @@ svg {
 
 .menu-panel {
   min-width: 0;
-  padding: calc(16px + env(safe-area-inset-top)) 14px 112px;
+  padding: calc(16px + env(safe-area-inset-top)) 14px calc(112px + env(safe-area-inset-bottom));
 }
 
 .search-wrap {
@@ -3476,10 +3476,11 @@ body {
 
 .menu-layout {
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 .menu-panel {
-  padding: calc(18px + env(safe-area-inset-top)) 16px 112px;
+  padding: calc(18px + env(safe-area-inset-top)) 16px calc(112px + env(safe-area-inset-bottom));
 }
 
 .search-wrap input {
