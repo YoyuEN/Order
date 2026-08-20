@@ -529,10 +529,12 @@ app.use((error, _request, response, _next) => {
   response.status(500).json({ error: '服务器暂时无法处理请求' })
 })
 
+// 先监听端口，避免启动瞬间 Vite 代理转发时连接被拒（ECONNREFUSED 竞态）
+app.listen(port, () => console.log(`服务已启动：http://localhost:${port}`))
+
 try {
   await initializeDatabase()
-  app.listen(port, () => console.log(`服务已启动：http://localhost:${port}`))
 } catch (error) {
   console.error('数据库初始化失败：', error.message)
-  process.exitCode = 1
+  process.exit(1)
 }

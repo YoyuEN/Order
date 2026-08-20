@@ -4,8 +4,109 @@ import { ScrollTrigger } from 'gsap/ScrollTrigger'
 gsap.registerPlugin(ScrollTrigger)
 
 let renderAnimations = null
+const transientAnimations = new Set()
 
 const PARTICLE_COUNT = 8
+
+export function captureAddAnimation(source) {
+  if (!source) return null
+  const image = source.closest('.dish-card, .detail-view')?.querySelector('.dish-image img')
+  if (!image) return null
+  const rect = image.getBoundingClientRect()
+  if (!rect.width || !rect.height) return null
+  return {
+    src: image.currentSrc || image.src,
+    alt: image.alt,
+    rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+  }
+}
+
+export function captureDishTransition(source) {
+  const image = source?.closest('.dish-open, .dish-card')?.querySelector('.dish-image img')
+  if (!image) return null
+  const rect = image.getBoundingClientRect()
+  if (!rect.width || !rect.height) return null
+  return {
+    src: image.currentSrc || image.src,
+    alt: image.alt,
+    rect: { left: rect.left, top: rect.top, width: rect.width, height: rect.height },
+  }
+}
+
+export function animateDishTransition(snapshot) {
+  if (!snapshot || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+  const target = document.querySelector('.dish-image-preview-button .dish-image img')
+  if (!target) return
+
+  const targetRect = target.getBoundingClientRect()
+  const flight = document.createElement('img')
+  flight.src = snapshot.src
+  flight.alt = ''
+  flight.className = 'dish-transition-image'
+  flight.setAttribute('aria-hidden', 'true')
+  Object.assign(flight.style, {
+    left: `${snapshot.rect.left}px`,
+    top: `${snapshot.rect.top}px`,
+    width: `${snapshot.rect.width}px`,
+    height: `${snapshot.rect.height}px`,
+  })
+  document.body.appendChild(flight)
+  transientAnimations.add(flight)
+  gsap.set(target, { autoAlpha: 0 })
+
+  const tween = gsap.to(flight, {
+    x: targetRect.left - snapshot.rect.left,
+    y: targetRect.top - snapshot.rect.top,
+    width: targetRect.width,
+    height: targetRect.height,
+    duration: 0.58,
+    ease: 'power3.inOut',
+    onComplete: () => {
+      flight.remove()
+      transientAnimations.delete(flight)
+      transientAnimations.delete(tween)
+      gsap.to(target, { autoAlpha: 1, duration: 0.18, ease: 'power2.out' })
+    },
+  })
+  transientAnimations.add(tween)
+}
+
+export function animateAddToOrder(snapshot) {
+  if (!snapshot || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+  const target = document.querySelector('.bottom-nav .nav-item[data-action="orders"]')
+  if (!target) return
+
+  const targetRect = target.getBoundingClientRect()
+  const flight = document.createElement('img')
+  flight.src = snapshot.src
+  flight.alt = ''
+  flight.className = 'add-flight-image'
+  flight.setAttribute('aria-hidden', 'true')
+  Object.assign(flight.style, {
+    left: `${snapshot.rect.left}px`,
+    top: `${snapshot.rect.top}px`,
+    width: `${snapshot.rect.width}px`,
+    height: `${snapshot.rect.height}px`,
+  })
+  document.body.appendChild(flight)
+  transientAnimations.add(flight)
+
+  const tween = gsap.to(flight, {
+    x: targetRect.left + targetRect.width / 2 - snapshot.rect.left - snapshot.rect.width / 2,
+    y: targetRect.top + targetRect.height / 2 - snapshot.rect.top - snapshot.rect.height / 2,
+    scale: Math.max(0.22, Math.min(0.38, targetRect.width / snapshot.rect.width)),
+    rotation: 8,
+    duration: 0.62,
+    ease: 'power3.inOut',
+    onComplete: () => {
+      flight.remove()
+      transientAnimations.delete(flight)
+      transientAnimations.delete(tween)
+      gsap.fromTo(target, { scale: 1 }, { scale: 1.12, duration: 0.16, yoyo: true, repeat: 1, ease: 'power2.out' })
+    },
+  })
+  transientAnimations.add(tween)
+}
 
 /**
  * 环境光背景（仿 Cursor Origin 风格）：
@@ -32,6 +133,11 @@ export function ambientMarkup() {
  */
 export function animateRenderedView() {
   renderAnimations?.revert()
+  transientAnimations.forEach((animation) => {
+    if (animation instanceof Element) animation.remove()
+    else animation.kill()
+  })
+  transientAnimations.clear()
   const media = gsap.matchMedia()
   renderAnimations = media
 
@@ -102,68 +208,77 @@ export function animateRenderedView() {
     return () => tl.kill()
   })
 
-  // —— 菜单菜品卡片：滚动进入视口时逐张浮现（once，避免重复播放） ——
+  // —— 菜单菜品卡片：按视口批量浮现，减少长菜单上的触发器数量 ——
   media.add({ reveal: '(prefers-reduced-motion: no-preference)' }, () => {
     const cards = document.querySelectorAll('.menu-layout .dish-card')
     if (!cards.length) return undefined
     gsap.set(cards, { autoAlpha: 0, y: 26, scale: 0.97 })
     const cleanupTimers = []
-    const reveal = (card) => {
-      gsap.to(card, {
+    const reveal = (targets) => {
+      gsap.to(targets, {
         autoAlpha: 1,
         y: 0,
         scale: 1,
         duration: 0.55,
         ease: 'power3.out',
+        stagger: 0.07,
         overwrite: 'auto',
       })
-      // 硬兜底：某些环境（后台标签页 / 低端机）requestAnimationFrame 被节流甚至冻结，
-      // tween 不会推进。延迟后若卡片仍处于隐藏状态，直接强制落到最终可见状态，
-      // 保证「最后一行菜品」在任何情况下都能显示出来。
-      const id = setTimeout(() => {
-        const cs = getComputedStyle(card)
-        if (cs.opacity === '0' || cs.visibility === 'hidden') {
-          gsap.set(card, { autoAlpha: 1, y: 0, scale: 1 })
-        }
-      }, 650)
-      cleanupTimers.push(id)
+      targets.forEach((card) => {
+        const id = setTimeout(() => {
+          const cs = getComputedStyle(card)
+          if (cs.opacity === '0' || cs.visibility === 'hidden') gsap.set(card, { autoAlpha: 1, y: 0, scale: 1 })
+        }, 650)
+        cleanupTimers.push(id)
+      })
     }
     // 兜底：把「已经处于视口内」的卡片立即浮现。
     // 解决从详情页返回菜单恢复滚动位置、或懒加载图片后布局变化时，
     // 最后一行卡片因 onEnter 未触发而永远卡在 opacity:0 的问题。
     const revealIfVisible = () => {
       const vh = window.innerHeight || document.documentElement.clientHeight
-      cards.forEach((card) => {
-        if (card.getBoundingClientRect().top < vh * 0.92) reveal(card)
-      })
+      const visibleCards = [...cards].filter((card) => card.getBoundingClientRect().top < vh * 0.92 && getComputedStyle(card).visibility !== 'visible')
+      if (visibleCards.length) reveal(visibleCards)
     }
-    const triggers = []
-    cards.forEach((card) => {
-      const st = ScrollTrigger.create({
-        trigger: card,
-        start: 'top 92%',
-        once: true,
-        onEnter: () => reveal(card),
-        onRefresh: (self) => {
-          // 位置刷新时若卡片已越过触发线（滚动恢复 / 图片加载后重排），立即显示
-          if (self.progress > 0 || self.isActive) reveal(card)
-        },
-      })
-      triggers.push(st)
+    const batch = ScrollTrigger.batch(cards, {
+      start: 'top 92%',
+      once: true,
+      interval: 0.08,
+      batchMax: () => window.innerWidth < 640 ? 2 : 4,
+      onEnter: (targets) => reveal(targets),
     })
     // 立即检查一次 + 等两帧与定时器再各检查一次，覆盖各种渲染/滚动时序
     revealIfVisible()
     const raf = requestAnimationFrame(() => requestAnimationFrame(revealIfVisible))
     const timer = setTimeout(revealIfVisible, 800)
     return () => {
-      triggers.forEach((st) => st.kill())
+      batch.forEach((st) => st.kill())
       cancelAnimationFrame(raf)
       clearTimeout(timer)
       cleanupTimers.forEach(clearTimeout)
     }
   })
 
-  // —— 桌面端（精确指针）—— 菜单已改为平面列表（细线分隔），不再做卡片式 3D 倾斜 ——
+  // —— 桌面端（精确指针）—— 图片只做微小位移，保持平面列表的信息密度 ——
+  media.add('(hover: hover) and (pointer: fine)', () => {
+    const rows = [...document.querySelectorAll('.menu-layout .dish-card')]
+    if (!rows.length) return undefined
+    const cleanups = rows.map((row) => {
+      const image = row.querySelector('.dish-image img')
+      if (!image) return () => {}
+      const xTo = gsap.quickTo(image, 'x', { duration: 0.24, ease: 'power3.out' })
+      const enter = () => xTo(5)
+      const leave = () => xTo(0)
+      row.addEventListener('pointerenter', enter)
+      row.addEventListener('pointerleave', leave)
+      return () => {
+        row.removeEventListener('pointerenter', enter)
+        row.removeEventListener('pointerleave', leave)
+        xTo(0)
+      }
+    })
+    return () => cleanups.forEach((cleanup) => cleanup())
+  })
 
   return () => media.revert()
 }

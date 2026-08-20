@@ -1,5 +1,5 @@
 import './style.css'
-import { animateRenderedView, ambientMarkup } from './animations.js'
+import { animateAddToOrder, animateDishTransition, animateRenderedView, ambientMarkup, captureAddAnimation, captureDishTransition } from './animations.js'
 import { registerSW } from 'virtual:pwa-register'
 import { App } from '@capacitor/app'
 import { shouldSkipSearchRender } from './search-ime.js'
@@ -445,7 +445,7 @@ function bottomBar() {
   const active = state.view
   return `<nav class="bottom-nav" aria-label="主导航">
     <button class="nav-item ${active === 'menu' ? 'active' : ''}" data-action="menu">${icons.home}<span>首页</span></button>
-    <button class="nav-item ${active === 'orders' ? 'active' : ''}" data-action="orders">${icons.receipt}<span>已点</span></button>
+    <button class="nav-item ${active === 'orders' ? 'active' : ''}" data-action="orders">${icons.receipt}<span>已点</span>${count ? `<b class="nav-count" aria-label="已选 ${count} 道菜">${count}</b>` : ''}</button>
     <button class="nav-center-btn" data-action="new-dish" aria-label="新增菜品">${icons.plus}</button>
     <button class="nav-item ${active === 'messages' ? 'active' : ''}" data-action="messages">${icons.message}<span>留言</span></button>
     <button class="nav-item ${active === 'profile' ? 'active' : ''}" data-action="profile">${icons.user}<span>我的</span></button>
@@ -824,6 +824,7 @@ function picksItems() {
 // —— 已点菜单项左滑显示“移除”按钮（仅触屏） ——
 const CART_ACTION_WIDTH = 72
 const cartSwipeGesture = { active: false, item: null, main: null, startX: 0, startY: 0, startOffset: 0, swiping: false, suppressClick: false }
+const detailSheetGesture = { active: false, sheet: null, startY: 0, dragging: false }
 
 function closeCartSwipe(except) {
   document.querySelectorAll('.cart-item.swiped').forEach((item) => {
@@ -896,6 +897,43 @@ function onCartPointerUp(event) {
   const total = startOffset + (event.clientX - startX)
   item.classList.toggle('swiped', total < -CART_ACTION_WIDTH / 2)
   closeCartSwipe(item)
+}
+
+function onDetailSheetPointerDown(event) {
+  if (!isTouchDevice() || state.view !== 'detail' || state.imagePreviewOpen) return
+  const sheet = event.target.closest('.detail-sheet')
+  if (!sheet || window.scrollY > 2) return
+  detailSheetGesture.active = true
+  detailSheetGesture.sheet = sheet
+  detailSheetGesture.startY = event.clientY
+  detailSheetGesture.dragging = false
+  try { sheet.setPointerCapture(event.pointerId) } catch { /* 部分浏览器不支持 */ }
+}
+
+function onDetailSheetPointerMove(event) {
+  const gesture = detailSheetGesture
+  if (!gesture.active || !gesture.sheet) return
+  const delta = event.clientY - gesture.startY
+  if (!gesture.dragging) {
+    if (delta < 8) return
+    gesture.dragging = true
+    gesture.sheet.classList.add('is-dragging')
+  }
+  event.preventDefault()
+  gesture.sheet.style.setProperty('--sheet-drag-y', `${Math.min(delta, window.innerHeight * 0.72)}px`)
+}
+
+function onDetailSheetPointerUp() {
+  const gesture = detailSheetGesture
+  if (!gesture.active) return
+  const { sheet, dragging } = gesture
+  gesture.active = false
+  gesture.sheet = null
+  if (!sheet || !dragging) return
+  const delta = Math.max(0, parseFloat(sheet.style.getPropertyValue('--sheet-drag-y')) || 0)
+  sheet.classList.remove('is-dragging')
+  sheet.style.removeProperty('--sheet-drag-y')
+  if (delta > Math.min(150, window.innerHeight * 0.22)) goBack()
 }
 
 function isTouchDevice() {
@@ -1431,8 +1469,10 @@ function showToast(message) {
   window.setTimeout(() => { region.innerHTML = '' }, 2200)
 }
 
-function openDish(id) {
+function openDish(id, source = null) {
+  const transition = captureDishTransition(source)
   state.selectedDish = dishes.find((dish) => dish.id === Number(id)); const existing = state.picks.find((item) => item.dishId === state.selectedDish.id); state.selectedOption = existing?.option || state.selectedDish.options[0]; state.note = existing?.note || ''; state.moreMenuOpen = false; navigate('detail')
+  animateDishTransition(transition)
 }
 
 function addDish(dish, option = dish.options[0], note = '') {
@@ -1572,7 +1612,7 @@ document.addEventListener('click', async (event) => {
   const button = event.target.closest('button')
   const dishOpen = event.target.closest('.dish-open')
   if (!button) {
-    if (dishOpen && !dishOpen.hasAttribute('aria-disabled')) openDish(dishOpen.dataset.dish)
+    if (dishOpen && !dishOpen.hasAttribute('aria-disabled')) openDish(dishOpen.dataset.dish, dishOpen)
     return
   }
   if (button.dataset.category) { state.category = button.dataset.category; render(); return }
@@ -1856,11 +1896,13 @@ document.addEventListener('click', async (event) => {
   if (button.dataset.dish) {
     const dish = dishes.find((item) => item.id === Number(button.dataset.dish))
     if (button.classList.contains('add-button')) {
+      const addAnimation = captureAddAnimation(button)
       addDish(dish)
       button.disabled = true
       try {
         await syncOrder()
         render()
+        animateAddToOrder(addAnimation)
         showToast(`已经点好「${dish.name}」啦`)
       } catch {
         state.picks = state.picks.filter((item) => item.dishId !== dish.id)
@@ -1934,6 +1976,7 @@ document.addEventListener('click', async (event) => {
   }
   if (action === 'confirm-add') {
     const dish = state.selectedDish
+    const addAnimation = captureAddAnimation(button)
     const option = document.querySelector('input[name="option"]:checked')?.value || dish.options[0]
     const note = document.querySelector('#dish-note').value.trim()
     const prevIndex = state.picks.findIndex((item) => item.dishId === dish.id)
@@ -1943,6 +1986,7 @@ document.addEventListener('click', async (event) => {
     try {
       await syncOrder()
       goBack()
+      animateAddToOrder(addAnimation)
       showToast('已经点好这道菜啦')
     } catch {
       if (prevPick) state.picks[prevIndex] = prevPick
@@ -1973,6 +2017,10 @@ document.addEventListener('pointerdown', onCartPointerDown, { passive: false })
 document.addEventListener('pointermove', onCartPointerMove, { passive: false })
 document.addEventListener('pointerup', onCartPointerUp, { passive: false })
 document.addEventListener('pointercancel', onCartPointerUp, { passive: false })
+document.addEventListener('pointerdown', onDetailSheetPointerDown, { passive: false })
+document.addEventListener('pointermove', onDetailSheetPointerMove, { passive: false })
+document.addEventListener('pointerup', onDetailSheetPointerUp, { passive: false })
+document.addEventListener('pointercancel', onDetailSheetPointerUp, { passive: false })
 
 document.addEventListener('keydown', (event) => {
   if (event.key === 'Escape' && state.imagePreviewOpen) closeImagePreview()
@@ -1987,7 +2035,7 @@ document.addEventListener('keydown', (event) => {
   const dishOpen = event.target.closest('.dish-open')
   if (dishOpen && (event.key === 'Enter' || event.key === ' ')) {
     event.preventDefault()
-    if (!dishOpen.hasAttribute('aria-disabled')) openDish(dishOpen.dataset.dish)
+    if (!dishOpen.hasAttribute('aria-disabled')) openDish(dishOpen.dataset.dish, dishOpen)
     return
   }
   // 手机端软键盘没有 Shift 键：Enter 用于正常换行，保存交给按钮/失焦触发
