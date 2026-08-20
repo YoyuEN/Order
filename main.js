@@ -334,6 +334,7 @@ const icons = {
   edit: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M17 3a2.8 2.8 0 0 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>',
   trash: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14Z"/></svg>',
   chevronDown: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="m7 10 5 5 5-5"/></svg>',
+  check: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>',
   zoom: '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M10 4a6 6 0 1 1 0 12 6 6 0 0 1 0-12Zm6.3 10.9 4.5 4.5-1.4 1.4-4.5-4.5a7 7 0 1 1 1.4-1.4ZM9.2 7v6M6.2 10h6"/></svg>',
 }
 
@@ -1145,25 +1146,44 @@ async function loadUserMenuAssignmentOptions() {
 function userMenuView() {
   const selectedUserId = Number(state.assignMenuSelectedUserId || 0)
   const selectedUser = state.assignMenuUsers.find((user) => Number(user.id) === selectedUserId) || state.assignMenuUsers[0] || null
-  const dishList = dishes.length
-    ? dishes.map((dish) => {
-        const checked = state.assignMenuDishIds.includes(Number(dish.id))
-        return `<label class="menu-assignment-item"><input type="checkbox" name="dishId" value="${dish.id}" ${checked ? 'checked' : ''}><span>${escapeHtml(dish.name)}</span><small>${escapeHtml(dish.category || '其他')}</small></label>`
-      }).join('')
+  const totalCount = dishes.length
+  const selectedCount = dishes.filter((dish) => state.assignMenuDishIds.includes(Number(dish.id))).length
+  const dishItems = dishes.map((dish) => {
+    const checked = state.assignMenuDishIds.includes(Number(dish.id))
+    return `<label class="menu-assignment-item">
+      <input type="checkbox" name="dishId" value="${dish.id}" ${checked ? 'checked' : ''}>
+      <span class="menu-assignment-check" aria-hidden="true">${icons.check}</span>
+      <span class="menu-assignment-name">${escapeHtml(dish.name)}</span>
+      <small class="menu-assignment-category">${escapeHtml(dish.category || '其他')}</small>
+    </label>`
+  }).join('')
+  const dishList = totalCount
+    ? `<div class="menu-assignment-head">
+        <span class="menu-assignment-title">可选菜品 <em id="assign-menu-count">${selectedCount}/${totalCount}</em></span>
+        <span class="menu-assignment-tools">
+          <button type="button" class="menu-assignment-tool" data-action="assign-all">全选</button>
+          <button type="button" class="menu-assignment-tool" data-action="assign-none">清空</button>
+        </span>
+      </div>
+      <div class="menu-assignment-list">${dishItems}</div>`
     : '<div class="empty"><b>没有可分配的菜单</b><span>先添加菜品后再设置用户权限</span></div>'
 
   return `<main class="subpage"><header class="subpage-header"><button class="icon-button" data-action="close-user-menu" aria-label="返回个人中心">${icons.back}</button><h1>分配菜单</h1><span></span></header>
-    <section class="profile-page" aria-label="分配菜单">
-      <form id="assign-menu-form" class="login-form" novalidate>
-        <label class="login-field">
-          <span>用户</span>
-          <select id="assign-menu-user" name="userId" ${state.assignMenuUsers.length ? '' : 'disabled'}>
-            ${state.assignMenuUsers.map((user) => `<option value="${user.id}" ${selectedUser && Number(user.id) === Number(selectedUser.id) ? 'selected' : ''}>${escapeHtml(user.displayName || user.username)}</option>`).join('') || '<option value="">暂无用户</option>'}
-          </select>
+    <section class="profile-page assign-menu-page" aria-label="分配菜单">
+      <form id="assign-menu-form" class="assign-menu-form" novalidate>
+        <label class="assign-menu-user">
+          <span class="assign-menu-label">选择用户</span>
+          <span class="assign-menu-select-wrap">
+            <select id="assign-menu-user" name="userId" ${state.assignMenuUsers.length ? '' : 'disabled'}>
+              ${state.assignMenuUsers.map((user) => `<option value="${user.id}" ${selectedUser && Number(user.id) === Number(selectedUser.id) ? 'selected' : ''}>${escapeHtml(user.displayName || user.username)}</option>`).join('') || '<option value="">暂无用户</option>'}
+            </select>
+            <span class="assign-menu-chevron" aria-hidden="true">${icons.chevronDown}</span>
+          </span>
         </label>
         ${state.assignMenuError ? `<p class="login-error" role="alert">${escapeHtml(state.assignMenuError)}</p>` : ''}
-        <div class="menu-assignment-list">${dishList}</div>
-        <button type="submit" class="primary-button login-submit">保存分配</button>
+        ${dishList}
+        <button type="submit" class="primary-button assign-menu-submit">保存分配</button>
+        <p class="assign-menu-hint">勾选该用户可见的菜品，保存后立即生效</p>
       </form>
     </section>${bottomBar()}</main>`
 }
@@ -1579,6 +1599,16 @@ document.addEventListener('click', async (event) => {
   if (action === 'close-user-menu') {
     state.assignMenuError = ''
     navigate('profile', { replace: true })
+    return
+  }
+  if (action === 'assign-all') {
+    state.assignMenuDishIds = dishes.map((dish) => Number(dish.id))
+    render()
+    return
+  }
+  if (action === 'assign-none') {
+    state.assignMenuDishIds = []
+    render()
     return
   }
   if (action === 'close-user-create') {
